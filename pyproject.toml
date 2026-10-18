@@ -1,5 +1,5 @@
 [project]
-name = "inter-browser-favorites"
+name = "befave"
 version = "0.1.0"
 description = "Keep favorites in sync across Chrome, Firefox, Safari and Opera via a deduplicated sqlite3 database"
 readme = "README.md"
@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
-befave = "inter_browser_favorites.cli:main"
+befave = "befave.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

@@ -20,7 +20,7 @@ can round trip between browsers.
 ## Install
 
 ```
-uv tool install inter-browser-favorites   # once published
+uv tool install befave   # once published
 # or from a checkout
 uv run befave
 ```
@@ -49,7 +49,7 @@ file, so you never say which one it came from.
 
 ### Database
 
-The default is `~/.inter_browser_favorites/favorites.db`; use `--db` to choose
+The default is `~/.befave/favorites.db`; use `--db` to choose
 another file. One table, `bookmarks`, holds the URL, title, folder path, add
 and last-modified dates, tags (Firefox) and the icon (base64 data).
 
@@ -65,7 +65,7 @@ befave import --db ~/Dropbox/favorites.db bookmarks.html
 befave export out.html --browser chrome --db ~/Dropbox/favorites.db
 ```
 
-Or copy `~/.inter_browser_favorites/favorites.db` between machines. Use it from
+Or copy `~/.befave/favorites.db` between machines. Use it from
 one computer at a time, and let the sync finish before running `befave` on
 another, so two copies don't diverge.
 
@@ -83,6 +83,14 @@ another, so two copies don't diverge.
   The lists are `BUNDLED_FOLDERS` and `SAFARI_DEFAULTS` in `importer.py`.
 - **Toolbar folders are normalized.** Chrome/Opera "Bookmarks Bar", Firefox
   "Bookmarks Toolbar" and Safari "Favorites" are all stored as `Bookmarks Bar`.
+
+## Known limitation: deletions
+
+`befave` only adds. If you delete a favorite in one browser, it is not removed
+from the database, so it comes back the next time you export and import
+elsewhere. To get rid of one for good, delete it in every browser you use and
+then delete the database (or start a new one with `--db`) and re-import. Proper
+deletion handling is planned.
 
 ## What export does
 

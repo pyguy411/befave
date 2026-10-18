@@ -7,7 +7,7 @@ import zipfile
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".inter_browser_favorites", "favorites.db")
+DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".befave", "favorites.db")
 WEB_SCHEMES = ("http", "https", "ftp")
 
 # Folders browsers ship by default; the whole subtree is skipped.
