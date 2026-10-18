@@ -1,4 +1,4 @@
-"""be_fave: interactive wrapper around the importer and exporter."""
+"""befave: interactive wrapper around the importer and exporter."""
 import argparse
 import os
 import shlex
@@ -30,7 +30,7 @@ def need(value, missing_msg, prompt, **kw):
     if value:
         return value
     if not INTERACTIVE:
-        raise SystemExit(f"be_fave: error: {missing_msg}")
+        raise SystemExit(f"befave: error: {missing_msg}")
     return ask(prompt, **kw)
 
 
@@ -44,7 +44,7 @@ def do_import(args):
     files = args.files
     if not files:
         if not INTERACTIVE:
-            raise SystemExit("be_fave: error: no bookmark files given")
+            raise SystemExit("befave: error: no bookmark files given")
         files = shlex.split(ask("Bookmark file(s) to import (.html or .zip, space separated)"))
     db = pick_db(args.db)
     return run_import([os.path.expanduser(f) for f in files], os.path.expanduser(db))
@@ -60,7 +60,7 @@ def do_export(args):
 
 def build_parser():
     ap = argparse.ArgumentParser(
-        prog="be_fave",
+        prog="befave",
         description="Import browser bookmark exports into a database, or export them "
                     "for a browser. Any missing details are asked interactively.")
     sub = ap.add_subparsers(dest="action", metavar="{import,export}")

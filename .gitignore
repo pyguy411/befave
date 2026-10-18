@@ -241,3 +241,4 @@ cython_debug/
 *.sqlite3
 example_formats/
 *.html
+PLANNING.md
