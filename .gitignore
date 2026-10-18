@@ -238,3 +238,6 @@ cython_debug/
 #.idea/
 
 .DS_Store
+*.sqlite3
+example_formats/
+*.html

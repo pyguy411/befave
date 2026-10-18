@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 """Import Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
-import argparse
 import os
+import re
 import sqlite3
 import sys
 import zipfile
@@ -10,6 +9,22 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".inter_browser_favorites", "favorites.db")
 WEB_SCHEMES = ("http", "https", "ftp")
+
+# Folders browsers ship by default; the whole subtree is skipped.
+BUNDLED_FOLDERS = {"mozilla firefox"}
+# Links Safari pre-populates in its top-level Favorites folder.
+SAFARI_DEFAULTS = {
+    "https://www.apple.com/", "https://www.icloud.com/", "https://www.yahoo.com/",
+    "https://www.bing.com/", "https://www.google.com/?client=safari&channel=mac_bm",
+    "https://www.wikipedia.org/", "https://www.facebook.com/", "https://twitter.com/",
+    "https://www.linkedin.com/", "https://www.weather.com/", "https://www.yelp.com/",
+    "https://www.tripadvisor.com/",
+}
+
+BUNDLED_URL = re.compile(r"^https://www\.mozilla\.org/(?:[\w-]+/)?firefox/(?:customize|help)/?$")
+
+# All browsers' toolbar folders are stored under this one name.
+TOOLBAR = "Bookmarks Bar"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS bookmarks (
@@ -66,10 +81,12 @@ class BookmarkParser(HTMLParser):
         self.capture = None  # "h3" or "a"
         self.buf = []
         self.attrs = {}
+        self.folder_attrs = {}
 
     def handle_starttag(self, tag, attrs):
         if tag == "h3":
             self.capture, self.buf = "h3", []
+            self.folder_attrs = {k.lower(): v for k, v in attrs}
         elif tag == "a":
             self.capture, self.buf = "a", []
             self.attrs = {k.lower(): v for k, v in attrs}
@@ -79,7 +96,14 @@ class BookmarkParser(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "h3" and self.capture == "h3":
-            self.pending_folder = "".join(self.buf).strip()
+            name = "".join(self.buf).strip()
+            top_level = not any(self.folders)
+            if top_level and (
+                    self.folder_attrs.get("personal_toolbar_folder", "").lower() == "true"
+                    or name == "Favorites"  # Safari's toolbar folder
+            ):
+                name = TOOLBAR
+            self.pending_folder = name
             self.capture = None
         elif tag == "a" and self.capture == "a":
             self._finish_link()
@@ -105,6 +129,14 @@ class BookmarkParser(HTMLParser):
             "tags": a.get("tags"),
             "icon": a.get("icon"),
         })
+
+
+def is_bundled(b):
+    if any(p.lower() in BUNDLED_FOLDERS for p in b["folder"].split("/")):
+        return True
+    if BUNDLED_URL.match(b["url"]):
+        return True
+    return b["folder"] == TOOLBAR and b["url"] in SAFARI_DEFAULTS
 
 
 def read_export(path):
@@ -133,7 +165,7 @@ def parse_export(path):
 def import_file(conn, path):
     found = added = 0
     for b in parse_export(path):
-        if urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
+        if is_bundled(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
             continue
         found += 1
         cur = conn.execute(
@@ -148,16 +180,13 @@ def import_file(conn, path):
     return found, added
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("files", nargs="+", help="bookmark export(s): .html or .zip")
-    ap.add_argument("--db", default=DEFAULT_DB, help="default: %(default)s")
-    args = ap.parse_args()
-    os.makedirs(os.path.dirname(os.path.abspath(args.db)), exist_ok=True)
-    conn = sqlite3.connect(args.db)
+def run_import(files, db):
+    """Import each file into db; returns a process exit status."""
+    os.makedirs(os.path.dirname(os.path.abspath(db)), exist_ok=True)
+    conn = sqlite3.connect(db)
     conn.execute(SCHEMA)
     status = 0
-    for path in args.files:
+    for path in files:
         try:
             found, added = import_file(conn, path)
         except (OSError, ValueError, zipfile.BadZipFile) as e:
@@ -165,8 +194,5 @@ def main():
             status = 1
             continue
         print(f"{path}: {found} found, {added} new, {found - added} duplicates skipped")
+    conn.close()
     return status
-
-
-if __name__ == "__main__":
-    sys.exit(main())

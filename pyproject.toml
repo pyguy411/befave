@@ -1,0 +1,17 @@
+[project]
+name = "inter-browser-favorites"
+version = "0.1.0"
+description = "Move favorites between browsers via a deduplicated sqlite3 database"
+readme = "README.md"
+authors = [
+    { name = "David Jackson", email = "pyguy411@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+be_fave = "inter_browser_favorites.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"

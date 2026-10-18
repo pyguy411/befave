@@ -1,12 +1,18 @@
-#!/usr/bin/env python3
 """Export the favorites db to a Netscape bookmark HTML file importable by any browser."""
-import argparse
 import os
 import sqlite3
 import sys
 from html import escape
 
-from import_bookmarks import DEFAULT_DB
+from .importer import DEFAULT_DB, TOOLBAR
+
+# Name each browser uses for its toolbar folder on import.
+BROWSER_TOOLBAR = {
+    "chrome": "Bookmarks Bar",
+    "opera": "Bookmarks Bar",
+    "firefox": "Bookmarks Toolbar",
+    "safari": "Favorites",
+}
 
 
 def build_tree(rows):
@@ -23,11 +29,15 @@ def attr(name, value):
     return f' {name}="{escape(str(value), quote=True)}"' if value not in (None, "") else ""
 
 
-def render(node, out, depth):
+def render(node, out, depth, toolbar_name=None):
     pad = "    " * depth
     out.append(f"{pad}<DL><p>")
     for name, child in node["folders"].items():
-        out.append(f"{pad}    <DT><H3>{escape(name)}</H3>")
+        if toolbar_name and name == TOOLBAR:
+            flag = "" if toolbar_name == "Favorites" else ' PERSONAL_TOOLBAR_FOLDER="true"'
+            out.append(f"{pad}    <DT><H3{flag}>{escape(toolbar_name)}</H3>")
+        else:
+            out.append(f"{pad}    <DT><H3>{escape(name)}</H3>")
         render(child, out, depth + 1)
     for r in node["links"]:
         out.append(
@@ -38,7 +48,7 @@ def render(node, out, depth):
     out.append(f"{pad}</DL><p>")
 
 
-def export(db, path):
+def export(db, path, browser):
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM bookmarks ORDER BY id").fetchall()
@@ -48,23 +58,19 @@ def export(db, path):
         "<TITLE>Bookmarks</TITLE>",
         "<H1>Bookmarks</H1>",
     ]
-    render(build_tree(rows), out, 0)
+    root = build_tree(rows)
+    if TOOLBAR in root["folders"]:  # toolbar first
+        root["folders"] = {TOOLBAR: root["folders"].pop(TOOLBAR), **root["folders"]}
+    render(root, out, 0, BROWSER_TOOLBAR[browser])
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(out) + "\n")
     return len(rows)
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("output", help="output .html file")
-    ap.add_argument("--db", default=DEFAULT_DB, help="default: %(default)s")
-    args = ap.parse_args()
-    if not os.path.exists(args.db):
-        print(f"error: database not found: {args.db}", file=sys.stderr)
+def run_export(output, browser, db):
+    """Export db to output for the target browser; returns a process exit status."""
+    if not os.path.exists(db):
+        print(f"error: database not found: {db}", file=sys.stderr)
         return 1
-    print(f"{args.output}: {export(args.db, args.output)} bookmarks exported")
+    print(f"{output}: {export(db, output, browser)} bookmarks exported")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
