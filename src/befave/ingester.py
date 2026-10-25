@@ -1,4 +1,4 @@
-"""Pull Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
+"""Ingest Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
 import os
 import re
 import sqlite3
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     id INTEGER PRIMARY KEY,
     source_id INTEGER NOT NULL REFERENCES sources(id),
     taken_at INTEGER NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('pull', 'push'))
+    kind TEXT NOT NULL CHECK (kind IN ('ingest', 'dump'))
 );
 CREATE TABLE IF NOT EXISTS source_items (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
@@ -224,7 +224,7 @@ def list_sources(db):
 
 
 def import_file(conn, path, source, assume_yes=False, confirm=None):
-    """Pull one browser export file as a full snapshot of `source`.
+    """Ingest one browser export file as a full snapshot of `source`.
 
     Returns (found, added, deleted). Raises ValueError if a confirmation is declined.
     """
@@ -245,11 +245,11 @@ def import_file(conn, path, source, assume_yes=False, confirm=None):
             and not ok(f"{len(vanished)} of {len(baseline)} bookmarks from '{source}' are "
                        "missing from this file and would be deleted everywhere. "
                        "Is this a partial export? Delete them anyway?")):
-        raise ValueError(f"{path}: pull cancelled (too many deletions)")
+        raise ValueError(f"{path}: ingest cancelled (too many deletions)")
 
     tombstoned = {r[0] for r in conn.execute("SELECT url_norm FROM tombstones")}
     # A tombstoned URL the source already had is just a stale copy; one it did not
-    # have before was re-added (or comes from a source never pulled before).
+    # have before was re-added (or comes from a source never ingested before).
     revived = (items & tombstoned) - baseline
     if revived and not ok(f"{len(revived)} bookmark(s) in this file were deleted earlier. "
                           "Restore them?"):
@@ -273,13 +273,13 @@ def import_file(conn, path, source, assume_yes=False, confirm=None):
              b["add_date"], b["last_modified"], b["tags"], b["icon"]),
         )
         added += cur.rowcount
-    record_snapshot(conn, sid, "pull", items)
+    record_snapshot(conn, sid, "ingest", items)
     conn.commit()
     return len(rows), added, len(vanished)
 
 
-def run_pull(files, db, source=None, assume_yes=False, confirm=None):
-    """Pull each file into db as a snapshot of `source`; returns an exit status.
+def run_ingest(files, db, source=None, assume_yes=False, confirm=None):
+    """Ingest each file into db as a snapshot of `source`; returns an exit status.
 
     `source` may be a name or a callable taking the file path.
     """

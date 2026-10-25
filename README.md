@@ -5,27 +5,30 @@ files that browsers export. It **never talks to a browser directly**: you
 export an HTML bookmarks file from the browser yourself, and you import the
 file `befave` writes back into the browser yourself.
 
-In between, `befave` merges the files from Chrome, Firefox, Safari or Opera into
-one sqlite3 database with no duplicates, and remembers what you deleted. Two
-commands do this: `pull` reads a browser's exported HTML file into the database,
-and `push` writes the database out as an HTML file for a browser to import. (Browsers call their steps "export" and
-"import"; `befave` uses its own words so
-the two aren't confused.) The cycle repeats, so favorites can round trip between
-browsers:
+In between, `befave` keeps one sqlite3 database with no duplicates, and
+remembers what you deleted. Think of it as a bucket for your favorites, with two
+commands:
+
+- **`ingest`** feeds a browser's exported HTML file into the bucket.
+- **`dump`** pours the bucket out as an HTML file for a browser to import.
+
+(Browsers call their steps "export" and "import"; `befave` uses its own words so
+the two aren't confused.) Ingest from as many browsers as you like, dump to any of
+them, and repeat. Favorites round trip between Chrome, Firefox, Safari and Opera:
 
 ```
-browser --(you export)--> bookmarks.html --(befave pull)--> database
-database --(befave push)--> out.html --(you import)--> browser
+browser --(you export)--> bookmarks.html --(befave ingest)--> database
+database --(befave dump)--> out.html --(you import)--> browser
 ```
 
 ## Why
 
 - Frustrated that the browser on your work computer doesn't have the same
-  favorites as your home computer? Export from each browser, pull both files
-  into `befave`, push the merged set, and import that file into either browser.
-- Added new favorites in a new browser after you pulled your favorites from
-  another one? Export the new browser's bookmarks, pull them (only the new
-  ones are added), then push the full set and import it into any browser.
+  favorites as your home computer? Export from each browser, ingest both files
+  into `befave`, dump the merged set, and import that file into either browser.
+- Added new favorites in a new browser after you ingested your favorites from
+  another one? Export the new browser's bookmarks, ingest them (only the new
+  ones are added), then dump the full set and import it into any browser.
 - Switching browsers, or using several at once? Keep one master list and
   load it into whichever browser you pick up.
 
@@ -66,79 +69,104 @@ choices: type the number and press Enter. Anything you pass as an argument is
 not asked again.
 
 ```
-befave                      # asks: pull or push?
-befave pull                 # asks for the file(s), source and database
-befave pull --db a.sqlite3 --source home-firefox example_formats/firefox_bookmarks.html
-befave push                 # asks for the target browser, output file, source, database
-befave push out.html --browser firefox --source home-firefox --db a.sqlite3
+befave                      # asks: ingest or dump?
+befave ingest               # asks for the file(s), source and database
+befave ingest --db a.sqlite3 --source home-firefox example_formats/0_firefox_bookmarks.html
+befave dump                 # asks for the target browser, output file, source, database
+befave dump out.html --browser firefox --source home-firefox --db a.sqlite3
 ```
 
 ### Options
 
-| Command | Argument or option | Meaning                                          |
-|---------|--------------------|--------------------------------------------------|
-| `pull`  | `FILE...`          | Browser export file(s), `.html` or `.zip`        |
-| `pull`  | `--source NAME`    | Browser profile the file(s) come from            |
-| `pull`  | `--db PATH`        | Database file (default `~/.befave/favorites.db`) |
-| `pull`  | `--yes`            | Accept the delete and restore confirmations      |
-| `push`  | `OUTPUT`           | Path of the `.html` file to write                |
-| `push`  | `--browser NAME`   | `chrome`, `firefox`, `opera` or `safari`         |
-| `push`  | `--source NAME`    | Browser profile the file is for                  |
-| `push`  | `--db PATH`        | Database file (default `~/.befave/favorites.db`) |
+| Command  | Argument or option | Meaning                                            |
+|----------|--------------------|----------------------------------------------------|
+| `ingest` | `FILE...`          | Export file(s) or globs, `.html` or `.zip`         |
+| `ingest` | `--source NAME`    | Profile a file comes from; once per file, in order |
+| `ingest` | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
+| `ingest` | `--yes`            | Accept the delete and restore confirmations        |
+| `dump`   | `OUTPUT`           | Path of the `.html` file to write                  |
+| `dump`   | `--browser NAME`   | `chrome`, `firefox`, `opera` or `safari`           |
+| `dump`   | `--source NAME`    | Browser profile the file is for                    |
+| `dump`   | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
+
+### Ingesting several files at once
+
+`ingest` takes any number of files, and globs are expanded by `befave` itself
+(quote them, or let your shell expand them, as on Windows where it won't):
+
+```
+befave ingest example_formats/*
+befave ingest --source ff --source safari --source chrome --source opera 'example_formats/*'
+```
+
+- **Order matters.** Files are ingested in name order, and when the same URL is in
+  several files the first one wins (title, folder, dates). Name the files so the
+  one you trust most sorts first, such as `0_firefox_bookmarks.html`. Uppercase
+  names sort before lowercase ones, so `Safari_bookmarks.zip` comes before
+  `chrome_bookmarks.html`.
+- **One source per file.** Each file is a full list of one browser profile, so
+  every file needs a different source. Interactively you are asked for each
+  file's source in turn. In a script, give one `--source` per file, in the same
+  order as the files. A file whose source was already used in the same run is
+  skipped with an error.
+- A pattern that matches nothing is an error, and a file matched twice is
+  ingested once.
 
 ### Scripts and cron jobs
 
 When not run from a terminal, `befave` never prompts. It uses the default
 database unless you pass `--db`, and exits with an error if a required argument
-is missing: the file (s) for `pull`, `--browser`, the output file and `--source`
-for `push`, and `--source` for both. Without `--yes`, a pull that needs
+is missing: the file(s) for `ingest`, `--browser`, the output file and `--source`
+for `dump`, and `--source` for both. Without `--yes`, an ingest that needs
 confirmation (see [Deletions](#deletions)) is cancelled and nothing is changed.
 
 ```
-befave pull --source work-chrome --yes bookmarks.html
-befave push --source work-chrome --browser chrome out.html
+befave ingest --source work-chrome --yes bookmarks.html
+befave dump --source work-chrome --browser chrome out.html
 ```
 
 ### Step by step
 
-**Pull**: read a browser's exported bookmarks file into the database.
+**Ingest**: read a browser's exported bookmarks file into the database.
 
 1. In your browser, export your bookmarks as an HTML file (see below).
-2. Run `befave` and choose `1` (pull), or run `befave pull`.
-3. Enter the path to the exported file (`.html` or `.zip`).
+2. Run `befave` and choose `1` (ingest), or run `befave ingest`.
+3. Enter the path to the exported file (`.html` or `.zip`). You can give
+   several files or a glob such as `exports/*`; see
+   [Ingesting several files at once](#ingesting-several-files-at-once).
 4. **Which database?** Choose `1` to use the default database (its path is
    shown), or `2` to type the path to a different one.
 5. **Which source is this?** A source is one browser profile on one computer,
    such as `work-chrome`. Pick an existing one from the list, or choose "Add a
-   new source" and type a name. Use the same name every time you pull from that
-   browser, because `befave` compares each pull with the previous one to spot
+   new source" and type a name. Use the same name every time you ingest from that
+   browser, because `befave` compares each ingest with the previous one to spot
    favorites you deleted. See [Sources](#sources).
 6. If asked to confirm deletions or restores, choose `1` (Yes) or `2` (No); see
    [Deletions](#deletions).
 
-**Push**: write the database out as a file a browser can import.
+**Dump**: write the database out as a file a browser can import.
 
-1. Run `befave` and choose `2` (push), or run `befave push`.
+1. Run `befave` and choose `2` (dump), or run `befave dump`.
 2. **Which browser will import this file?** Choose the browser. This only sets
    the name of the toolbar folder in the file, so your toolbar favorites land
-   on that browser's real toolbar (see [What push does](#what-push-does)). It
+   on that browser's real toolbar (see [What dump does](#what-dump-does)). It
    does not change which favorites are included.
 3. Enter the path for the output `.html` file.
-4. Choose the database, as in pull.
+4. Choose the database, as in ingest.
 5. Choose the source the file is for, usually the browser profile you are about
-   to import it into. Pushing records what that source now has, so a favorite
+   to import it into. Dumping records what that source now has, so a favorite
    you later delete there is recognized as a deletion and not re-added.
 6. In the browser, import the file with its bookmark manager's import option.
 
 ### Getting an export file from your browser
 
 `befave` only reads and writes HTML files; it does not open, read or change
-your browser's own bookmarks. Before a pull, export your bookmarks from the
-browser's bookmark manager as an HTML file. After a push, import the file
+your browser's own bookmarks. Before an ingest, export your bookmarks from the
+browser's bookmark manager as an HTML file. After a dump, import the file
 `befave` wrote using the same bookmark manager. Importing adds to the browser's
 existing bookmarks, so `befave` does not remove anything from the browser for
 you: to delete a favorite everywhere, delete it in the browser, export again,
-and pull.
+and ingest.
 
 Safari's export can be a `.zip`, which `befave` opens itself.
 
@@ -157,15 +185,15 @@ database in a folder you already sync (Dropbox, iCloud Drive, a USB stick, etc.)
 and point both computers at it with `--db`:
 
 ```
-befave pull --db ~/Dropbox/favorites.db --source work-chrome bookmarks.html
-befave push out.html --browser chrome --source work-chrome --db ~/Dropbox/favorites.db
+befave ingest --db ~/Dropbox/favorites.db --source work-chrome bookmarks.html
+befave dump out.html --browser chrome --source work-chrome --db ~/Dropbox/favorites.db
 ```
 
 Or copy `~/.befave/favorites.db` between machines. Use it from
 one computer at a time, and let the sync finish before running `befave` on
 another, so two copies don't diverge.
 
-## What pull does
+## What ingest does
 
 - **No duplicates.** URLs are compared after lowercasing the scheme and host,
   dropping the `#fragment`, and removing `utm_*` tracking parameters. The path
@@ -176,7 +204,7 @@ another, so two copies don't diverge.
   `place:` and `file://` are skipped.
 - **Browser defaults are skipped.** Firefox's "Mozilla Firefox" folder (and its
   stray help/customize links) and the 12 links Safari ships in Favorites.
-  The lists are `BUNDLED_FOLDERS` and `SAFARI_DEFAULTS` in `puller.py`.
+  The lists are `BUNDLED_FOLDERS` and `SAFARI_DEFAULTS` in `ingester.py`.
 - **Toolbar folders are normalized.** Chrome/Opera "Bookmarks Bar", Firefox
   "Bookmarks Toolbar" and Safari "Favorites" are all stored as `Bookmarks Bar`.
 
@@ -184,7 +212,7 @@ another, so two copies don't diverge.
 
 A **source** is a name you give to one browser profile on one computer, such as
 `work-chrome` or `home-firefox`. `befave` keeps a separate history for each
-source, and asks which one you mean on every pull and push (or pass
+source, and asks which one you mean on every ingest and dump (or pass
 `--source NAME`).
 
 You need a separate source for each place favorites live, because each one holds
@@ -193,26 +221,26 @@ missing from one browser would look like something you deleted.
 
 How a source behaves:
 
-- Each pull is treated as that source's complete list of favorites.
-- A favorite that was in the source's previous pull but is missing now counts as
+- Each ingest is treated as that source's complete list of favorites.
+- A favorite that was in the source's previous ingest but is missing now counts as
   deleted (see [Deletions](#deletions)).
-- A push records what that source now has, so a favorite you later delete in that
+- A dump records what that source now has, so a favorite you later delete in that
   browser is noticed.
-- The first pull of a source never deletes anything.
+- The first ingest of a source never deletes anything.
 
 ### Example
 
 Work Chrome has favorites A, B and C. Home Firefox has A, B and D.
 
-1. Pull Chrome's export with `--source work-chrome`, then Firefox's with
+1. Ingest Chrome's export with `--source work-chrome`, then Firefox's with
    `--source home-firefox`. The database now has A, B, C and D. Nothing is
-   deleted, because both were first pulls.
-2. Later, you delete B in Chrome, export again, and pull with
-   `--source work-chrome`. B was in that source's last pull and is gone now, so B
+   deleted, because both were first ingests.
+2. Later, you delete B in Chrome, export again, and ingest with
+   `--source work-chrome`. B was in that source's last ingest and is gone now, so B
    is removed from the database.
-3. Push for Firefox. The file leaves B out, and it has C, which Firefox didn't
+3. Dump the database for Firefox. The file leaves B out, and it has C, which Firefox didn't
    have before.
-4. Pulling Firefox's export again as `home-firefox` does not delete C. C was never
+4. Ingesting Firefox's export again as `home-firefox` does not delete C. C was never
    in that source's history, so it is not missing from it.
 
 ### Tips
@@ -226,22 +254,22 @@ Work Chrome has favorites A, B and C. Home Firefox has A, B and D.
 
 ## Deletions
 
-Each pull is treated as the full list of that source's favorites. A favorite
-that was in the source's previous pull but is missing now counts as deleted
-and is removed from the database, so it is no longer pushed to your other
-browsers. A deleted favorite is not brought back by a pull of another source
+Each ingest is treated as the full list of that source's favorites. A favorite
+that was in the source's previous ingest but is missing now counts as deleted
+and is removed from the database, so later dumps leave it out for your other
+browsers. A deleted favorite is not brought back by an ingest of another source
 that still has it.
 
-Two safeguards ask for confirmation (`pull --yes` accepts them):
+Two safeguards ask for confirmation (`ingest --yes` accepts them):
 
 - **Mass deletion:** if more than 30% of a source's favorites (for sources with
   more than 10) are missing, it may be a partial export, such as a single folder.
 - **Restoring:** a file contains a favorite that was deleted earlier and that
-  source did not have in its last pull. Declining keeps it deleted.
+  source did not have in its last ingest. Declining keeps it deleted.
 
-The first pull of a source never deletes anything.
+The first ingest of a source never deletes anything.
 
-## What push does
+## What dump does
 
 Writes a Netscape-format HTML file with the folder hierarchy rebuilt. The
 toolbar folder is named for the target browser (`--browser`):

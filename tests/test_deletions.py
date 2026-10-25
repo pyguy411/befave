@@ -3,8 +3,8 @@ import sqlite3
 import tempfile
 import unittest
 
-from befave.pusher import run_push
-from befave.puller import run_pull
+from befave.dumper import run_dump
+from befave.ingester import run_ingest
 
 
 def write_export(path, urls):
@@ -26,7 +26,7 @@ class DeletionTests(unittest.TestCase):
     def imp(self, source, urls, yes=False):
         path = os.path.join(self.tmp.name, f"{source}.html")
         write_export(path, urls)
-        return run_pull([path], self.db, source, yes)
+        return run_ingest([path], self.db, source, yes)
 
     def urls(self):
         conn = sqlite3.connect(self.db)
@@ -37,7 +37,7 @@ class DeletionTests(unittest.TestCase):
 
     def export(self, source):
         out = os.path.join(self.tmp.name, "out.html")
-        run_push(out, "chrome", self.db, source)
+        run_dump(out, "chrome", self.db, source)
         with open(out) as f:
             return f.read()
 
@@ -64,7 +64,7 @@ class DeletionTests(unittest.TestCase):
         self.imp("a", [url(1), url(2)], yes=True)
         self.assertEqual(self.urls(), {url(1), url(2)})
 
-    def test_push_then_delete_in_target(self):
+    def test_dump_then_delete_in_target(self):
         self.imp("a", [url(1), url(2)])
         self.export("b")
         self.imp("b", [url(1)])
