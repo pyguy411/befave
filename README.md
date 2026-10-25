@@ -260,7 +260,7 @@ Today you share the database file yourself (see above). A paid hosted service
 could do that for you: sign in, and your favorites sync between all your
 computers and browsers without moving files around. This is only an idea and
 nothing is built yet. If you would be interested, please get in touch at
-pyguy411@gmail.com.
+pyguy411 (at) gmail (dot) com.
 
 ## Development
 
