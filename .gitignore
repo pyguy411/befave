@@ -242,3 +242,4 @@ cython_debug/
 example_formats/
 *.html
 PLANNING.md
+AGENTS.md
