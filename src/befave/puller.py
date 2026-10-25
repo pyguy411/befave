@@ -1,8 +1,9 @@
-"""Import Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
+"""Pull Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
 import os
 import re
 import sqlite3
 import sys
+import time
 import zipfile
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -37,8 +38,32 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     last_modified INTEGER,
     tags TEXT,
     icon TEXT
-)
+);
+CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS snapshots (
+    id INTEGER PRIMARY KEY,
+    source_id INTEGER NOT NULL REFERENCES sources(id),
+    taken_at INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('pull', 'push'))
+);
+CREATE TABLE IF NOT EXISTS source_items (
+    snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+    url_norm TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, url_norm)
+);
+CREATE TABLE IF NOT EXISTS tombstones (
+    url_norm TEXT PRIMARY KEY,
+    source_id INTEGER NOT NULL REFERENCES sources(id),
+    deleted_at INTEGER NOT NULL
+);
 """
+
+# Guard against partial exports being mistaken for mass deletion.
+MASS_DELETE_FRACTION = 0.3
+MASS_DELETE_MIN_ITEMS = 10
 
 
 def normalize_url(url):
@@ -162,37 +187,116 @@ def parse_export(path):
     return parser.bookmarks
 
 
-def import_file(conn, path):
-    found = added = 0
+def source_id(conn, name):
+    conn.execute("INSERT OR IGNORE INTO sources (name) VALUES (?)", (name,))
+    return conn.execute("SELECT id FROM sources WHERE name = ?", (name,)).fetchone()[0]
+
+
+def baseline_items(conn, sid):
+    """URLs in the source's latest snapshot (None if it has none)."""
+    row = conn.execute(
+        "SELECT id FROM snapshots WHERE source_id = ? ORDER BY id DESC LIMIT 1", (sid,)
+    ).fetchone()
+    if not row:
+        return None
+    return {r[0] for r in conn.execute(
+        "SELECT url_norm FROM source_items WHERE snapshot_id = ?", (row[0],))}
+
+
+def record_snapshot(conn, sid, kind, items):
+    cur = conn.execute(
+        "INSERT INTO snapshots (source_id, taken_at, kind) VALUES (?,?,?)",
+        (sid, int(time.time()), kind))
+    conn.executemany("INSERT INTO source_items VALUES (?,?)",
+                     [(cur.lastrowid, u) for u in items])
+
+
+def list_sources(db):
+    if not os.path.exists(db):
+        return []
+    conn = sqlite3.connect(db)
+    try:
+        return [r[0] for r in conn.execute("SELECT name FROM sources ORDER BY name")]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def import_file(conn, path, source, assume_yes=False, confirm=None):
+    """Pull one browser export file as a full snapshot of `source`.
+
+    Returns (found, added, deleted). Raises ValueError if a confirmation is declined.
+    """
+    confirm = confirm or (lambda msg: False)
+    ok = lambda msg: assume_yes or confirm(msg)
+    rows = {}
     for b in parse_export(path):
         if is_bundled(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
             continue
-        found += 1
+        rows.setdefault(normalize_url(b["url"]), b)
+    items = set(rows)
+
+    sid = source_id(conn, source)
+    baseline = baseline_items(conn, sid) or set()
+    vanished = baseline - items
+    if (len(baseline) > MASS_DELETE_MIN_ITEMS
+            and len(vanished) / len(baseline) > MASS_DELETE_FRACTION
+            and not ok(f"{len(vanished)} of {len(baseline)} bookmarks from '{source}' are "
+                       "missing from this file and would be deleted everywhere. "
+                       "Is this a partial export? Delete them anyway?")):
+        raise ValueError(f"{path}: pull cancelled (too many deletions)")
+
+    tombstoned = {r[0] for r in conn.execute("SELECT url_norm FROM tombstones")}
+    # A tombstoned URL the source already had is just a stale copy; one it did not
+    # have before was re-added (or comes from a source never pulled before).
+    revived = (items & tombstoned) - baseline
+    if revived and not ok(f"{len(revived)} bookmark(s) in this file were deleted earlier. "
+                          "Restore them?"):
+        revived = set()
+    blocked = (items & tombstoned) - revived
+
+    now = int(time.time())
+    for url in vanished:
+        conn.execute("INSERT OR REPLACE INTO tombstones VALUES (?,?,?)", (url, sid, now))
+        conn.execute("DELETE FROM bookmarks WHERE url_norm = ?", (url,))
+    for url in revived:
+        conn.execute("DELETE FROM tombstones WHERE url_norm = ?", (url,))
+    added = 0
+    for url in items - blocked:
+        b = rows[url]
         cur = conn.execute(
             "INSERT OR IGNORE INTO bookmarks "
             "(url_norm, url, title, folder, add_date, last_modified, tags, icon) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            (normalize_url(b["url"]), b["url"], b["title"], b["folder"],
+            (url, b["url"], b["title"], b["folder"],
              b["add_date"], b["last_modified"], b["tags"], b["icon"]),
         )
         added += cur.rowcount
+    record_snapshot(conn, sid, "pull", items)
     conn.commit()
-    return found, added
+    return len(rows), added, len(vanished)
 
 
-def run_import(files, db):
-    """Import each file into db; returns a process exit status."""
+def run_pull(files, db, source=None, assume_yes=False, confirm=None):
+    """Pull each file into db as a snapshot of `source`; returns an exit status.
+
+    `source` may be a name or a callable taking the file path.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(db)), exist_ok=True)
     conn = sqlite3.connect(db)
-    conn.execute(SCHEMA)
+    conn.executescript(SCHEMA)
     status = 0
     for path in files:
         try:
-            found, added = import_file(conn, path)
+            name = source(path) if callable(source) else source
+            found, added, deleted = import_file(conn, path, name, assume_yes, confirm)
         except (OSError, ValueError, zipfile.BadZipFile) as e:
+            conn.rollback()
             print(f"error: {e}", file=sys.stderr)
             status = 1
             continue
-        print(f"{path}: {found} found, {added} new, {found - added} duplicates skipped")
+        print(f"{path}: {found} found, {added} new, {found - added} duplicates skipped, "
+              f"{deleted} deleted")
     conn.close()
     return status

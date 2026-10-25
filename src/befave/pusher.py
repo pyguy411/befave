@@ -1,10 +1,10 @@
-"""Export the favorites db to a Netscape bookmark HTML file importable by any browser."""
+"""Push the favorites db to a Netscape bookmark HTML file that any browser can import."""
 import os
 import sqlite3
 import sys
 from html import escape
 
-from .importer import DEFAULT_DB, TOOLBAR
+from .puller import SCHEMA, TOOLBAR, baseline_items, record_snapshot, source_id
 
 # Name each browser uses for its toolbar folder on import.
 BROWSER_TOOLBAR = {
@@ -48,8 +48,9 @@ def render(node, out, depth, toolbar_name=None):
     out.append(f"{pad}</DL><p>")
 
 
-def export(db, path, browser):
+def push(db, path, browser, source):
     conn = sqlite3.connect(db)
+    conn.executescript(SCHEMA)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM bookmarks ORDER BY id").fetchall()
     out = [
@@ -64,13 +65,20 @@ def export(db, path, browser):
     render(root, out, 0, BROWSER_TOOLBAR[browser])
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(out) + "\n")
+    # Browsers add imported bookmarks to what they already have, so the source's
+    # new baseline is its previous one plus everything just pushed.
+    sid = source_id(conn, source)
+    record_snapshot(conn, sid, "push",
+                    (baseline_items(conn, sid) or set()) | {r["url_norm"] for r in rows})
+    conn.commit()
+    conn.close()
     return len(rows)
 
 
-def run_export(output, browser, db):
-    """Export db to output for the target browser; returns a process exit status."""
+def run_push(output, browser, db, source):
+    """Push db to output for the target browser; returns a process exit status."""
     if not os.path.exists(db):
         print(f"error: database not found: {db}", file=sys.stderr)
         return 1
-    print(f"{output}: {export(db, output, browser)} bookmarks exported")
+    print(f"{output}: {push(db, output, browser, source)} bookmarks pushed")
     return 0
