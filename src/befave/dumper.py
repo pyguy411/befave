@@ -4,7 +4,8 @@ import sqlite3
 import sys
 from html import escape
 
-from .ingester import SCHEMA, TOOLBAR, baseline_items, record_snapshot, profile_id
+from .ingester import (SCHEMA, TOOLBAR, baseline_items, clean_folder, record_snapshot,
+                       profile_id)
 
 # Name each browser uses for its toolbar folder on import.
 BROWSER_TOOLBAR = {
@@ -19,7 +20,7 @@ def build_tree(rows):
     root = {"folders": {}, "links": []}
     for row in rows:
         node = root
-        for name in filter(None, (row["folder"] or "").split("/")):
+        for name in filter(None, clean_folder(row["folder"]).split("/")):
             node = node["folders"].setdefault(name, {"folders": {}, "links": []})
         node["links"].append(row)
     return root

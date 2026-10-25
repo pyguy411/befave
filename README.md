@@ -208,6 +208,7 @@ another, so two copies don't diverge.
   The lists are `BUNDLED_FOLDERS` and `SAFARI_DEFAULTS` in `ingester.py`.
 - **Toolbar folders are normalized.** Chrome/Opera "Bookmarks Bar", Firefox
   "Bookmarks Toolbar" and Safari "Favorites" are all stored as `Bookmarks Bar`.
+- **The "Imported" wrapper folder is dropped.** See the [FAQ](#faq).
 
 ## Profiles
 
@@ -286,6 +287,29 @@ toolbar folder is named for the target browser (`--browser`):
 | safari        | Favorites         |
 
 The file has no wrapper folder. Other root folders sit beside the toolbar.
+
+## FAQ
+
+### Why is there an "Imported" folder in my browser after I import a dump?
+
+Some browsers, Opera in particular, put everything they import from a bookmarks
+file into a new `Imported` folder instead of merging it with what you already
+have. If you ingest that browser's export later, the `Imported` folder is part of
+the file, and it would be dumped back out and wrapped again on the next import.
+
+To stop this, `befave` removes a top-level `Imported` folder when it ingests and
+when it dumps. Its contents move up one level, for example
+`Bookmarks Bar/Imported/work` becomes `Bookmarks Bar/work`, so the database and
+every dump keep your own folder layout.
+
+- Only the browser-made folder is removed: the one directly under the toolbar or
+  at the root. An `Imported` folder deeper in the tree is kept.
+- If you named a top-level folder `Imported` yourself, it is flattened too,
+  because the file cannot show who created it. Rename it to avoid this.
+- Bookmarks already in the database are cleaned when you dump, so a new dump has
+  no wrapper even if the database was filled before this change.
+- Delete the `Imported` folder in the browser after checking that everything
+  came across, or it stays there as a duplicate copy.
 
 ## Possible future feature: hosted sync
 

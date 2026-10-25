@@ -95,6 +95,18 @@ def to_int(value):
         return None
 
 
+def clean_folder(folder):
+    """Drop the "Imported" wrapper folder that a browser adds when it imports a file.
+
+    Only the top-level one (directly under the toolbar, or at the root) is dropped.
+    """
+    parts = [p for p in (folder or "").split("/") if p]
+    i = 1 if parts[:1] == [TOOLBAR] else 0
+    if len(parts) > i and parts[i].lower() == "imported":
+        del parts[i]
+    return "/".join(parts)
+
+
 class BookmarkParser(HTMLParser):
     """Walks <DL>/<H3>/<A> nesting; yields dicts in file order."""
 
@@ -148,7 +160,7 @@ class BookmarkParser(HTMLParser):
         self.bookmarks.append({
             "url": url.strip(),
             "title": "".join(self.buf).strip(),
-            "folder": "/".join(f for f in self.folders if f),
+            "folder": clean_folder("/".join(f for f in self.folders if f)),
             "add_date": to_int(a.get("add_date")),
             "last_modified": to_int(a.get("last_modified")),
             "tags": a.get("tags"),

@@ -103,6 +103,21 @@ class DeletionTests(unittest.TestCase):
         self.assertEqual(run_ingest([f1, f2], self.db, "all"), 0)
         self.assertEqual(self.urls(), {url(1), url(3)})
 
+    def test_browser_imported_folder_is_not_kept(self):
+        path = os.path.join(self.tmp.name, "o.html")
+        with open(path, "w") as f:
+            f.write("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<DL><p><DT><H3 PERSONAL_TOOLBAR_FOLDER=\"true\">Bookmarks Bar</H3><DL><p>"
+                    "<DT><H3>Imported</H3><DL><p><DT><H3>work</H3><DL><p>"
+                    "<DT><A HREF=\"https://a.example/\">a</A></DL><p></DL><p>"
+                    "<DT><H3>mine</H3><DL><p><DT><H3>Imported</H3><DL><p>"
+                    "<DT><A HREF=\"https://b.example/\">b</A></DL><p></DL><p></DL><p></DL><p>")
+        run_ingest([path], self.db, "o")
+        conn = sqlite3.connect(self.db)
+        folders = dict(conn.execute("SELECT url, folder FROM bookmarks"))
+        conn.close()
+        self.assertEqual(folders["https://a.example/"], "Bookmarks Bar/work")
+        self.assertEqual(folders["https://b.example/"], "Bookmarks Bar/mine/Imported")
+        self.assertEqual(self.export("o").count("<H3>Imported</H3>"), 1)
 
 if __name__ == "__main__":
     unittest.main()
