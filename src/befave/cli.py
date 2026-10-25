@@ -6,7 +6,7 @@ import shlex
 import sys
 
 from .dumper import BROWSER_TOOLBAR, run_dump
-from .ingester import DEFAULT_DB, list_sources, run_ingest
+from .ingester import DEFAULT_DB, list_profiles, run_ingest
 
 INTERACTIVE = sys.stdin.isatty()
 
@@ -64,21 +64,24 @@ def pick_browser(browser):
     return names[choose("Which browser will import this file?", names)]
 
 
-def pick_source(db, given=None):
-    """Return the named source, or let the user pick an existing one or add a new one."""
+def pick_profile(db, given=None):
+    """Return the named profile, or let the user pick an existing one or add a new one."""
     if given:
         return given
     if not INTERACTIVE:
-        raise SystemExit("befave: error: --source is required")
-    existing = list_sources(db)
+        raise SystemExit("befave: error: --profile is required")
+    existing = list_profiles(db)
     if existing:
-        i = choose("Which source is this? (one browser profile on one computer)",
-                   existing + ["Add a new source"])
+        i = choose("Which profile is this? (a name you pick for the browser profile you exported from)",
+                   existing + ["Add a new profile"])
         if i < len(existing):
             return existing[i]
     else:
-        print("No sources yet. A source is one browser profile on one computer.")
-    return ask("Name for the new source (e.g. work-chrome)")
+        print("No profiles yet. A profile is just a name you pick for this file, e.g. "
+              "\"Work Chrome\". befave does not read or need any browser profile or "
+              "account information. The name only lets it tell when a favorite should be "
+              "deleted.")
+    return ask("Name for the new profile (e.g. work-chrome)")
 
 
 def confirm(msg):
@@ -108,25 +111,17 @@ def do_ingest(args):
         files = shlex.split(
             ask("Browser export file(s) to ingest (.html or .zip, space separated)"))
     files = expand_files(files)
-    if args.source and len(args.source) != len(files):
-        raise SystemExit(f"befave: error: {len(files)} file(s) need {len(files)} --source "
-                         f"option(s), in the same order; got {len(args.source)}")
-    given = dict(zip(files, args.source))
+    if args.profile and len(args.profile) != len(files):
+        raise SystemExit(f"befave: error: {len(files)} file(s) need {len(files)} --profile "
+                         f"option(s), in the same order; got {len(args.profile)}")
+    given = dict(zip(files, args.profile))
     db = pick_db(args.db)
     db = os.path.expanduser(db)
-    used = set()
 
-    def source_for(path):
-        # Each file is a full snapshot of its source, so two files from one source
-        # would make the second look like it deleted everything missing from it.
-        name = pick_source(db, given.get(path))
-        if name in used:
-            raise ValueError(f"{path}: source '{name}' was already used by an earlier "
-                             "file in this run; each file needs its own source")
-        used.add(name)
-        return name
+    def profile_for(path):
+        return pick_profile(db, given.get(path))
 
-    return run_ingest(files, db, source_for, args.yes, confirm)
+    return run_ingest(files, db, profile_for, args.yes, confirm)
 
 
 def do_dump(args):
@@ -134,7 +129,7 @@ def do_dump(args):
     output = need(args.output, "output file is required", "Output file (.html)")
     db = pick_db(args.db)
     db = os.path.expanduser(db)
-    return run_dump(os.path.expanduser(output), browser, db, pick_source(db, args.source))
+    return run_dump(os.path.expanduser(output), browser, db, pick_profile(db, args.profile))
 
 
 def build_parser():
@@ -149,7 +144,7 @@ def build_parser():
     ingest.add_argument("files", nargs="*",
                       help="bookmark export(s): .html or .zip; globs like 'exports/*' work")
     ingest.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
-    ingest.add_argument("--source", action="append", default=[],
+    ingest.add_argument("--profile", action="append", default=[],
                       help="browser profile a file comes from; repeat once per file, "
                            "in file order")
     ingest.add_argument("--yes", action="store_true",
@@ -160,7 +155,7 @@ def build_parser():
     dump.add_argument("output", nargs="?", help="output .html file")
     dump.add_argument("--browser", choices=sorted(BROWSER_TOOLBAR), help="target browser")
     dump.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
-    dump.add_argument("--source", help="name of the browser profile the file is for")
+    dump.add_argument("--profile", help="name of the browser profile the file is for")
     dump.set_defaults(func=do_dump)
     return ap
 

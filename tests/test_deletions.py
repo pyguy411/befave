@@ -23,10 +23,10 @@ class DeletionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.db = os.path.join(self.tmp.name, "f.db")
 
-    def imp(self, source, urls, yes=False):
-        path = os.path.join(self.tmp.name, f"{source}.html")
+    def imp(self, profile, urls, yes=False):
+        path = os.path.join(self.tmp.name, f"{profile}.html")
         write_export(path, urls)
-        return run_ingest([path], self.db, source, yes)
+        return run_ingest([path], self.db, profile, yes)
 
     def urls(self):
         conn = sqlite3.connect(self.db)
@@ -35,9 +35,9 @@ class DeletionTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def export(self, source):
+    def export(self, profile):
         out = os.path.join(self.tmp.name, "out.html")
-        run_dump(out, "chrome", self.db, source)
+        run_dump(out, "chrome", self.db, profile)
         with open(out) as f:
             return f.read()
 
@@ -48,7 +48,7 @@ class DeletionTests(unittest.TestCase):
         self.assertEqual(self.urls(), {url(1), url(3)})
         self.assertNotIn(url(2), self.export("b"))
 
-    def test_stale_source_does_not_resurrect(self):
+    def test_stale_profile_does_not_resurrect(self):
         self.imp("a", [url(1), url(2)])
         self.imp("b", [url(1), url(2)])
         self.imp("a", [url(1)])
@@ -88,6 +88,20 @@ class DeletionTests(unittest.TestCase):
         self.imp("a", urls)
         self.assertEqual(self.imp("a", urls[:15]), 0)
         self.assertEqual(len(self.urls()), 15)
+
+    def test_files_sharing_a_profile_are_one_snapshot(self):
+        f1 = os.path.join(self.tmp.name, "1.html")
+        f2 = os.path.join(self.tmp.name, "2.html")
+        write_export(f1, [url(1), url(2)])
+        write_export(f2, [url(2), url(3)])
+        self.assertEqual(run_ingest([f1, f2], self.db, "all"), 0)
+        self.assertEqual(self.urls(), {url(1), url(2), url(3)})
+        write_export(f2, [url(3)])
+        self.assertEqual(run_ingest([f1, f2], self.db, "all"), 0)
+        self.assertEqual(self.urls(), {url(1), url(2), url(3)})
+        write_export(f1, [url(1)])
+        self.assertEqual(run_ingest([f1, f2], self.db, "all"), 0)
+        self.assertEqual(self.urls(), {url(1), url(3)})
 
 
 if __name__ == "__main__":

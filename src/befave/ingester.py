@@ -39,24 +39,24 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     tags TEXT,
     icon TEXT
 );
-CREATE TABLE IF NOT EXISTS sources (
+CREATE TABLE IF NOT EXISTS profiles (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
 CREATE TABLE IF NOT EXISTS snapshots (
     id INTEGER PRIMARY KEY,
-    source_id INTEGER NOT NULL REFERENCES sources(id),
+    profile_id INTEGER NOT NULL REFERENCES profiles(id),
     taken_at INTEGER NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('ingest', 'dump'))
 );
-CREATE TABLE IF NOT EXISTS source_items (
+CREATE TABLE IF NOT EXISTS profile_items (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     url_norm TEXT NOT NULL,
     PRIMARY KEY (snapshot_id, url_norm)
 );
 CREATE TABLE IF NOT EXISTS tombstones (
     url_norm TEXT PRIMARY KEY,
-    source_id INTEGER NOT NULL REFERENCES sources(id),
+    profile_id INTEGER NOT NULL REFERENCES profiles(id),
     deleted_at INTEGER NOT NULL
 );
 """
@@ -187,69 +187,72 @@ def parse_export(path):
     return parser.bookmarks
 
 
-def source_id(conn, name):
-    conn.execute("INSERT OR IGNORE INTO sources (name) VALUES (?)", (name,))
-    return conn.execute("SELECT id FROM sources WHERE name = ?", (name,)).fetchone()[0]
+def profile_id(conn, name):
+    conn.execute("INSERT OR IGNORE INTO profiles (name) VALUES (?)", (name,))
+    return conn.execute("SELECT id FROM profiles WHERE name = ?", (name,)).fetchone()[0]
 
 
 def baseline_items(conn, sid):
-    """URLs in the source's latest snapshot (None if it has none)."""
+    """URLs in the profile's latest snapshot (None if it has none)."""
     row = conn.execute(
-        "SELECT id FROM snapshots WHERE source_id = ? ORDER BY id DESC LIMIT 1", (sid,)
+        "SELECT id FROM snapshots WHERE profile_id = ? ORDER BY id DESC LIMIT 1", (sid,)
     ).fetchone()
     if not row:
         return None
     return {r[0] for r in conn.execute(
-        "SELECT url_norm FROM source_items WHERE snapshot_id = ?", (row[0],))}
+        "SELECT url_norm FROM profile_items WHERE snapshot_id = ?", (row[0],))}
 
 
 def record_snapshot(conn, sid, kind, items):
     cur = conn.execute(
-        "INSERT INTO snapshots (source_id, taken_at, kind) VALUES (?,?,?)",
+        "INSERT INTO snapshots (profile_id, taken_at, kind) VALUES (?,?,?)",
         (sid, int(time.time()), kind))
-    conn.executemany("INSERT INTO source_items VALUES (?,?)",
+    conn.executemany("INSERT INTO profile_items VALUES (?,?)",
                      [(cur.lastrowid, u) for u in items])
 
 
-def list_sources(db):
+def list_profiles(db):
     if not os.path.exists(db):
         return []
     conn = sqlite3.connect(db)
     try:
-        return [r[0] for r in conn.execute("SELECT name FROM sources ORDER BY name")]
+        return [r[0] for r in conn.execute("SELECT name FROM profiles ORDER BY name")]
     except sqlite3.OperationalError:
         return []
     finally:
         conn.close()
 
 
-def import_file(conn, path, source, assume_yes=False, confirm=None):
-    """Ingest one browser export file as a full snapshot of `source`.
+def import_files(conn, paths, profile, assume_yes=False, confirm=None):
+    """Ingest browser export file(s) as one combined snapshot of `profile`.
+
+    With several files the earliest one wins when they hold the same URL.
 
     Returns (found, added, deleted). Raises ValueError if a confirmation is declined.
     """
     confirm = confirm or (lambda msg: False)
     ok = lambda msg: assume_yes or confirm(msg)
     rows = {}
-    for b in parse_export(path):
-        if is_bundled(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
-            continue
-        rows.setdefault(normalize_url(b["url"]), b)
+    for path in paths:
+        for b in parse_export(path):
+            if is_bundled(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
+                continue
+            rows.setdefault(normalize_url(b["url"]), b)
     items = set(rows)
 
-    sid = source_id(conn, source)
+    sid = profile_id(conn, profile)
     baseline = baseline_items(conn, sid) or set()
     vanished = baseline - items
     if (len(baseline) > MASS_DELETE_MIN_ITEMS
             and len(vanished) / len(baseline) > MASS_DELETE_FRACTION
-            and not ok(f"{len(vanished)} of {len(baseline)} bookmarks from '{source}' are "
+            and not ok(f"{len(vanished)} of {len(baseline)} bookmarks from '{profile}' are "
                        "missing from this file and would be deleted everywhere. "
                        "Is this a partial export? Delete them anyway?")):
-        raise ValueError(f"{path}: ingest cancelled (too many deletions)")
+        raise ValueError(f"{', '.join(paths)}: ingest cancelled (too many deletions)")
 
     tombstoned = {r[0] for r in conn.execute("SELECT url_norm FROM tombstones")}
-    # A tombstoned URL the source already had is just a stale copy; one it did not
-    # have before was re-added (or comes from a source never ingested before).
+    # A tombstoned URL the profile already had is just a stale copy; one it did not
+    # have before was re-added (or comes from a profile never ingested before).
     revived = (items & tombstoned) - baseline
     if revived and not ok(f"{len(revived)} bookmark(s) in this file were deleted earlier. "
                           "Restore them?"):
@@ -278,25 +281,29 @@ def import_file(conn, path, source, assume_yes=False, confirm=None):
     return len(rows), added, len(vanished)
 
 
-def run_ingest(files, db, source=None, assume_yes=False, confirm=None):
-    """Ingest each file into db as a snapshot of `source`; returns an exit status.
+def run_ingest(files, db, profile=None, assume_yes=False, confirm=None):
+    """Ingest each file into db as a snapshot of `profile`; returns an exit status.
 
-    `source` may be a name or a callable taking the file path.
+    `profile` may be a name or a callable taking the file path.
     """
     os.makedirs(os.path.dirname(os.path.abspath(db)), exist_ok=True)
     conn = sqlite3.connect(db)
     conn.executescript(SCHEMA)
     status = 0
+    # Files that share a profile are one snapshot of it, so group them (in order).
+    groups = {}
     for path in files:
+        name = profile(path) if callable(profile) else profile
+        groups.setdefault(name, []).append(path)
+    for name, paths in groups.items():
         try:
-            name = source(path) if callable(source) else source
-            found, added, deleted = import_file(conn, path, name, assume_yes, confirm)
+            found, added, deleted = import_files(conn, paths, name, assume_yes, confirm)
         except (OSError, ValueError, zipfile.BadZipFile) as e:
             conn.rollback()
             print(f"error: {e}", file=sys.stderr)
             status = 1
             continue
-        print(f"{path}: {found} found, {added} new, {found - added} duplicates skipped, "
-              f"{deleted} deleted")
+        print(f"{', '.join(paths)} (profile {name}): {found} found, {added} new, "
+              f"{found - added} duplicates skipped, {deleted} deleted")
     conn.close()
     return status
