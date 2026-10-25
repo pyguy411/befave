@@ -70,7 +70,7 @@ choices: type the number and press Enter. Anything you pass as an argument is
 not asked again.
 
 ```
-befave                      # asks: ingest or dump?
+befave                      # asks: ingest, dump or compare?
 befave ingest               # asks for the file(s), profile and database
 befave ingest --db a.sqlite3 --profile home-firefox example_formats/0_firefox_bookmarks.html
 befave dump                 # asks for the target browser, output file, profile, database
@@ -89,6 +89,9 @@ befave dump out.html --browser firefox --profile home-firefox --db a.sqlite3
 | `dump`   | `--browser NAME`   | `chrome`, `firefox`, `opera` or `safari`           |
 | `dump`   | `--profile NAME`   | Browser profile the file is for                    |
 | `dump`   | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
+| `compare`| `PROFILE [PROFILE]`| Two profiles, or one profile and the whole database|
+| `compare`| `--common`, `--only-a`, `--only-b` | Print just that set of URLs        |
+| `compare`| `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 
 ### Ingesting several files at once
 
@@ -257,6 +260,21 @@ Work Chrome has favorites A, B and C. Home Firefox has A, B and D.
   and `laptop-chrome`.
 - Different profiles in one browser (for example two Chrome profiles) are also
   separate profiles.
+
+## Comparing profiles
+
+```
+befave compare work-chrome home-firefox   # shared, only in work, only in home
+befave compare work-chrome                # work-chrome against the whole database
+befave compare a b --common               # bare URLs, for scripts
+```
+
+`compare` only reads the database and never changes it. It uses what each profile
+last **ingested**, meaning the favorites in the export files you gave `befave`.
+A dump does not count: `befave` cannot know whether you imported the file, so if
+you want to see what a browser really holds, export a new file from it and ingest
+it. Comparing one profile with the database shows what a dump would add to that
+browser.
 
 ## Deletions
 

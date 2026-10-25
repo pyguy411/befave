@@ -5,6 +5,7 @@ import os
 import shlex
 import sys
 
+from .compare import run_compare
 from .dumper import BROWSER_TOOLBAR, run_dump
 from .ingester import DEFAULT_DB, list_profiles, run_ingest
 
@@ -132,13 +133,21 @@ def do_dump(args):
     return run_dump(os.path.expanduser(output), browser, db, pick_profile(db, args.profile))
 
 
+def do_compare(args):
+    db = os.path.expanduser(pick_db(args.db))
+    a = pick_profile(db, args.profile_a)
+    show = "common" if args.common else "only_a" if args.only_a else \
+        "only_b" if args.only_b else None
+    return run_compare(db, a, args.profile_b, show)
+
+
 def build_parser():
     ap = argparse.ArgumentParser(
         prog="befave",
         description="Ingest browser bookmark export files into a database, or dump the "
                     "database out as a file a browser can import. Any missing details "
                     "are asked interactively.")
-    sub = ap.add_subparsers(dest="action", metavar="{ingest,dump}")
+    sub = ap.add_subparsers(dest="action", metavar="{ingest,dump,compare}")
 
     ingest = sub.add_parser("ingest", help="ingest browser export file(s) into the database")
     ingest.add_argument("files", nargs="*",
@@ -157,6 +166,18 @@ def build_parser():
     dump.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
     dump.add_argument("--profile", help="name of the browser profile the file is for")
     dump.set_defaults(func=do_dump)
+
+    cmp = sub.add_parser("compare", help="compare the favorites ingested from two profiles, "
+                                         "or from one profile and the whole database")
+    cmp.add_argument("profile_a", nargs="?", help="first profile")
+    cmp.add_argument("profile_b", nargs="?",
+                     help="second profile; leave out to compare with the whole database")
+    cmp.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
+    show = cmp.add_mutually_exclusive_group()
+    show.add_argument("--common", action="store_true", help="print only the shared URLs")
+    show.add_argument("--only-a", action="store_true", help="print only URLs only in the first")
+    show.add_argument("--only-b", action="store_true", help="print only URLs only in the second")
+    cmp.set_defaults(func=do_compare)
     return ap
 
 
@@ -165,10 +186,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not args.action:
         if not INTERACTIVE:
-            ap.error("an action (ingest or dump) is required")
-        action = ["ingest", "dump"][choose("What would you like to do?", [
+            ap.error("an action (ingest, dump or compare) is required")
+        action = ["ingest", "dump", "compare"][choose("What would you like to do?", [
             "ingest - feed a browser's exported bookmarks file into the database",
             "dump - dump the database out as a file for a browser to import",
+            "compare - see which favorites a profile shares with another profile or the database",
         ])]
         args = ap.parse_args([action])
     return args.func(args)
