@@ -158,8 +158,19 @@ def do_ingest(args):
     db = pick_db(args.db)
     db = os.path.expanduser(db)
 
+    last = []
+
     def profile_for(path):
-        return pick_profile(db, given.get(path))
+        if given.get(path):
+            return given[path]
+        if INTERACTIVE and last:
+            if choose(f"{path}\nUse the same profile as the previous file, '{last[-1]}'?",
+                      ["Yes", "No - pick another profile"]) == 0:
+                last.append(last[-1])
+                return last[-1]
+        name = pick_profile(db, None)
+        last.append(name)
+        return name
 
     def track_for(name):
         if args.track_deletions:

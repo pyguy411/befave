@@ -109,7 +109,8 @@ befave ingest --profile ff --profile safari --profile chrome --profile opera 'ex
   names sort before lowercase ones, so `Safari_bookmarks.zip` comes before
   `chrome_bookmarks.html`.
 - **One profile per file, or several files for one profile.** Interactively you
-  are asked for each file's profile in turn. In a script, give one `--profile` per
+  are asked for each file's profile in turn, with the option to reuse the previous
+  file's profile. In a script, give one `--profile` per
   file, in the same order as the files. Files given the same profile are ingested
   together as one combined list of that profile's favorites, so none of them
   counts as deleting the favorites in another.
