@@ -165,6 +165,25 @@ class DeletionTests(unittest.TestCase):
                                     self.delete_all), 0)
         self.assertEqual(self.urls(), {url(1), url(3)})
 
+    def test_dump_single_and_merged_profiles(self):
+        self.imp("a", [url(1), url(2)])
+        self.imp("b", [url(2), url(3)])
+        self.imp("c", [url(4)])
+        out = os.path.join(self.tmp.name, "p.html")
+        self.assertEqual(run_dump(out, "chrome", self.db, ["a"]), 0)
+        text = open(out).read()
+        self.assertIn(url(1), text)
+        self.assertNotIn(url(3), text)
+        self.assertEqual(run_dump(out, "chrome", self.db, ["a", "b"]), 0)
+        text = open(out).read()
+        self.assertEqual(sum(url(n) in text for n in (1, 2, 3, 4)), 3)
+        self.assertEqual(text.count(f'HREF="{url(2)}"'), 1)
+
+    def test_dump_unknown_profile_is_an_error(self):
+        self.imp("a", [url(1)])
+        self.assertEqual(run_dump(os.path.join(self.tmp.name, "x.html"), "chrome",
+                                  self.db, ["nope"]), 1)
+
     def test_has_history(self):
         self.assertFalse(has_history(self.db, "a"))
         self.imp("a", [url(1)])

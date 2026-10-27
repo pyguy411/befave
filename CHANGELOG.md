@@ -5,6 +5,11 @@ All notable changes to `befave` are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `dump --profile NAME` writes only the favorites a profile holds. Repeat it to
+  merge several profiles into one file. Interactive dumps offer the choice.
+
 ## [0.1.1] - 2026-10-26
 
 ### Added

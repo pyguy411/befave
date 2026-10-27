@@ -4,7 +4,7 @@ import sqlite3
 import sys
 from html import escape
 
-from .ingester import TOOLBAR, clean_folder, open_db
+from .ingester import TOOLBAR, clean_folder, list_profiles, open_db
 
 # Name each browser uses for its toolbar folder on import.
 BROWSER_TOOLBAR = {
@@ -48,10 +48,19 @@ def render(node, out, depth, toolbar_name=None):
     out.append(f"{pad}</DL><p>")
 
 
-def dump(db, path, browser):
+def dump(db, path, browser, profiles=None):
+    """Write the favorites to path; `profiles` limits it to what those profiles hold."""
     conn = open_db(db)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id").fetchall()
+    if profiles:
+        marks = ",".join("?" * len(profiles))
+        rows = conn.execute(
+            "SELECT * FROM bookmarks WHERE deleted = 0 AND url_norm IN ("
+            "SELECT pb.url_norm FROM profile_bookmarks pb JOIN profiles p "
+            f"ON p.id = pb.profile_id WHERE p.name IN ({marks})) ORDER BY id",
+            list(profiles)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id").fetchall()
     out = [
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
         '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
@@ -68,10 +77,16 @@ def dump(db, path, browser):
     return len(rows)
 
 
-def run_dump(output, browser, db):
+def run_dump(output, browser, db, profiles=None):
     """Dump db to output for the target browser; returns a process exit status."""
     if not os.path.exists(db):
         print(f"error: database not found: {db}", file=sys.stderr)
         return 1
-    print(f"{output}: {dump(db, output, browser)} bookmarks dumped")
+    known = list_profiles(db)
+    unknown = [p for p in profiles or [] if p not in known]
+    if unknown:
+        print(f"error: no such profile: {', '.join(unknown)}"
+              f" (known: {', '.join(known) or 'none'})", file=sys.stderr)
+        return 1
+    print(f"{output}: {dump(db, output, browser, profiles)} bookmarks dumped")
     return 0

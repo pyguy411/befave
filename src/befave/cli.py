@@ -194,7 +194,14 @@ def do_dump(args):
     browser = pick_browser(args.browser)
     output = need(args.output, "output file is required", "Output file (.html)")
     db = os.path.expanduser(pick_db(args.db))
-    return run_dump(os.path.expanduser(output), browser, db)
+    profiles = args.profile
+    if not profiles and INTERACTIVE:
+        existing = list_profiles(db)
+        if existing and choose("Which favorites should the file contain?",
+                               ["All favorites in the database",
+                                "Only the favorites of one profile"]) == 1:
+            profiles = [existing[choose("Which profile?", existing)]]
+    return run_dump(os.path.expanduser(output), browser, db, profiles)
 
 
 def do_compare(args):
@@ -231,6 +238,9 @@ def build_parser():
     dump.add_argument("output", nargs="?", help="output .html file")
     dump.add_argument("--browser", choices=sorted(BROWSER_TOOLBAR), help="target browser")
     dump.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
+    dump.add_argument("--profile", action="append", default=[],
+                      help="only dump the favorites this profile holds; repeat to merge "
+                           "several profiles")
     dump.set_defaults(func=do_dump)
 
     cmp = sub.add_parser("compare", help="compare the favorites ingested from two profiles, "

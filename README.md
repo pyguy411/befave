@@ -88,6 +88,7 @@ befave dump out.html --browser firefox --db a.sqlite3
 | `ingest` | `--yes`            | Delete all missing favorites and accept restores   |
 | `dump`   | `OUTPUT`           | Path of the `.html` file to write                  |
 | `dump`   | `--browser NAME`   | `chrome`, `firefox`, `opera` or `safari`           |
+| `dump`   | `--profile NAME`   | Only favorites this profile holds; repeat to merge |
 | `dump`   | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 | `compare`| `PROFILE [PROFILE]`| Two profiles, or one profile and the whole database|
 | `compare`| `--common`, `--only-a`, `--only-b` | Print just that set of URLs        |
@@ -308,6 +309,17 @@ browser has been ingested once after the import.
 time it is opened, and a copy is saved as `<database>.bak`.
 
 ## What dump does
+
+By default the file has every favorite in the database. With `--profile NAME`
+it has only the favorites that profile held at its last ingest, minus any you
+deleted. Repeat the option to merge several profiles into one file, for example
+a work and a personal profile:
+
+```
+befave dump out.html --browser chrome --profile work-chrome --profile home-chrome
+```
+
+An unknown profile name is an error.
 
 Writes a Netscape-format HTML file with the folder hierarchy rebuilt. The
 toolbar folder is named for the target browser (`--browser`):
