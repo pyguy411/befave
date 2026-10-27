@@ -7,6 +7,8 @@ All notable changes to `befave` are listed here. The format follows
 
 ### Added
 
+- `query` command: `--show-deleted`, `--profiles`, `--history`, `--safe`, `--search`
+  and `--stats`, with `--profile`, `--folder` and `--urls`. It never changes favorites.
 - `dump --profile NAME` writes only the favorites a profile holds. Repeat it to
   merge several profiles into one file. Interactive dumps offer the choice.
 

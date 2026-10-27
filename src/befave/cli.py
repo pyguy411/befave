@@ -8,6 +8,7 @@ import time
 
 from .compare import run_compare
 from .dumper import BROWSER_TOOLBAR, run_dump
+from .query import VIEWS, run_query
 from .ingester import DEFAULT_DB, has_history, list_profiles, run_ingest
 
 INTERACTIVE = sys.stdin.isatty()
@@ -212,13 +213,41 @@ def do_compare(args):
     return run_compare(db, a, args.profile_b, show)
 
 
+VIEW_LABELS = {
+    "show_deleted": "Deleted favorites",
+    "profiles": "Profiles and how many favorites each holds",
+    "history": "Ingest history",
+    "safe": "Favorites you chose to keep",
+    "search": "Search favorites",
+    "stats": "Totals",
+}
+
+
+def do_query(args):
+    db = os.path.expanduser(pick_db(args.db))
+    chosen = [v for v in VIEWS if getattr(args, v) not in (None, False)]
+    if len(chosen) > 1:
+        raise SystemExit("befave: error: choose only one of --show-deleted, --profiles, "
+                         "--history, --safe, --search, --stats")
+    if chosen:
+        view = chosen[0]
+    elif INTERACTIVE:
+        view = VIEWS[choose("What do you want to see?", [VIEW_LABELS[v] for v in VIEWS])]
+    else:
+        view = "stats"
+    text = args.search
+    if view == "search" and text is None:
+        text = ask("Text to search for in titles and URLs")
+    return run_query(db, view, text, args.profile, args.folder, args.urls)
+
+
 def build_parser():
     ap = argparse.ArgumentParser(
         prog="befave",
         description="Ingest browser bookmark export files into a database, or dump the "
                     "database out as a file a browser can import. Any missing details "
                     "are asked interactively.")
-    sub = ap.add_subparsers(dest="action", metavar="{ingest,dump,compare}")
+    sub = ap.add_subparsers(dest="action", metavar="{ingest,dump,compare,query}")
 
     ingest = sub.add_parser("ingest", help="ingest browser export file(s) into the database")
     ingest.add_argument("files", nargs="*",
@@ -254,6 +283,23 @@ def build_parser():
     show.add_argument("--only-a", action="store_true", help="print only URLs only in the first")
     show.add_argument("--only-b", action="store_true", help="print only URLs only in the second")
     cmp.set_defaults(func=do_compare)
+
+    q = sub.add_parser("query", help="show deleted favorites, profiles, history and more")
+    q.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
+    views = q.add_mutually_exclusive_group()
+    views.add_argument("--show-deleted", dest="show_deleted", action="store_true",
+                       help="list deleted favorites")
+    views.add_argument("--profiles", action="store_true",
+                       help="list profiles with favorite counts and last ingest")
+    views.add_argument("--history", action="store_true", help="list ingest runs and files")
+    views.add_argument("--safe", action="store_true",
+                       help="list favorites you chose to keep when asked about deleting")
+    views.add_argument("--search", metavar="TEXT", help="find favorites by title or URL")
+    views.add_argument("--stats", action="store_true", help="show totals (the default)")
+    q.add_argument("--profile", help="only this profile (--history, --safe, --search)")
+    q.add_argument("--folder", help="only folders containing this text (--search)")
+    q.add_argument("--urls", action="store_true", help="print bare URLs, for scripts")
+    q.set_defaults(func=do_query)
     return ap
 
 
@@ -262,11 +308,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not args.action:
         if not INTERACTIVE:
-            ap.error("an action (ingest, dump or compare) is required")
-        action = ["ingest", "dump", "compare"][choose("What would you like to do?", [
+            ap.error("an action (ingest, dump, compare or query) is required")
+        action = ["ingest", "dump", "compare", "query"][choose("What would you like to do?", [
             "ingest - feed a browser's exported bookmarks file into the database",
             "dump - dump the database out as a file for a browser to import",
             "compare - see which favorites a profile shares with another profile or the database",
+            "query - show deleted favorites, profiles, ingest history and more",
         ])]
         args = ap.parse_args([action])
     return args.func(args)

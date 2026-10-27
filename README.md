@@ -92,6 +92,15 @@ befave dump out.html --browser firefox --db a.sqlite3
 | `dump`   | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 | `compare`| `PROFILE [PROFILE]`| Two profiles, or one profile and the whole database|
 | `compare`| `--common`, `--only-a`, `--only-b` | Print just that set of URLs        |
+| `query`  | `--show-deleted`   | List deleted favorites                             |
+| `query`  | `--profiles`       | Profiles, favorites held, last ingest              |
+| `query`  | `--history`        | Ingest runs and their files                        |
+| `query`  | `--safe`           | Favorites you chose to keep when asked about deleting |
+| `query`  | `--search TEXT`    | Find favorites by title or URL                     |
+| `query`  | `--stats`          | Totals (the default)                               |
+| `query`  | `--profile`, `--folder` | Filters (see [Querying](#querying-the-database)) |
+| `query`  | `--urls`           | Bare URLs, for scripts                             |
+| `query`  | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 | `compare`| `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 
 ### Ingesting several files at once
@@ -274,6 +283,22 @@ favorites in the export files you gave `befave`. A dump does not count:
 `befave` cannot know whether you imported the file, so if you want to see what a
 browser really holds, export a new file from it and ingest it. Comparing one
 profile with the database shows what a dump would add to that browser.
+
+## Querying the database
+
+```
+befave query --show-deleted               # what was deleted, and when
+befave query --profiles                   # favorites held per profile
+befave query --history --profile work-chrome
+befave query --search django --folder dev
+befave query --show-deleted --urls        # bare URLs for scripts
+```
+
+`query` only reads the database. Pick one view per run; with none, a terminal asks
+which you want and a script gets `--stats`. `--profile` filters `--history`,
+`--safe` and `--search`. It cannot be used with `--show-deleted`, because
+the database does not record which profile a deletion came from. `--urls` works
+with `--show-deleted`, `--safe` and `--search`.
 
 ## Deletions
 
