@@ -73,8 +73,8 @@ not asked again.
 befave                      # asks: ingest, dump or compare?
 befave ingest               # asks for the file(s), profile and database
 befave ingest --db a.sqlite3 --profile home-firefox example_formats/0_firefox_bookmarks.html
-befave dump                 # asks for the target browser, output file, profile, database
-befave dump out.html --browser firefox --profile home-firefox --db a.sqlite3
+befave dump                 # asks for the target browser, output file, database
+befave dump out.html --browser firefox --db a.sqlite3
 ```
 
 ### Options
@@ -84,10 +84,10 @@ befave dump out.html --browser firefox --profile home-firefox --db a.sqlite3
 | `ingest` | `FILE...`          | Export file(s) or globs, `.html` or `.zip`         |
 | `ingest` | `--profile NAME`   | Profile a file comes from; once per file, in order |
 | `ingest` | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
-| `ingest` | `--yes`            | Accept the delete and restore confirmations        |
+| `ingest` | `--track-deletions`| Review favorites missing since the profile's last ingest |
+| `ingest` | `--yes`            | Delete all missing favorites and accept restores   |
 | `dump`   | `OUTPUT`           | Path of the `.html` file to write                  |
 | `dump`   | `--browser NAME`   | `chrome`, `firefox`, `opera` or `safari`           |
-| `dump`   | `--profile NAME`   | Browser profile the file is for                    |
 | `dump`   | `--db PATH`        | Database file (default `~/.befave/favorites.db`)   |
 | `compare`| `PROFILE [PROFILE]`| Two profiles, or one profile and the whole database|
 | `compare`| `--common`, `--only-a`, `--only-b` | Print just that set of URLs        |
@@ -120,13 +120,13 @@ befave ingest --profile ff --profile safari --profile chrome --profile opera 'ex
 
 When not run from a terminal, `befave` never prompts. It uses the default
 database unless you pass `--db`, and exits with an error if a required argument
-is missing: the file(s) for `ingest`, `--browser`, the output file and `--profile`
-for `dump`, and `--profile` for both. Without `--yes`, an ingest that needs
-confirmation (see [Deletions](#deletions)) is cancelled and nothing is changed.
+is missing: the file(s) for `ingest`, `--browser`, and the output file
+for `dump`, and `--profile` for `ingest`. Without `--yes`, favorites that
+need a deletion decision (see [Deletions](#deletions)) are left alone.
 
 ```
-befave ingest --profile work-chrome --yes bookmarks.html
-befave dump --profile work-chrome --browser chrome out.html
+befave ingest --profile work-chrome --track-deletions --yes bookmarks.html
+befave dump --browser chrome out.html
 ```
 
 ### Step by step
@@ -145,8 +145,8 @@ befave dump --profile work-chrome --browser chrome out.html
    new profile" and type a name. Use the same name every time you ingest from that
    browser, because `befave` compares each ingest with the previous one to spot
    favorites you deleted. See [Profiles](#profiles).
-6. If asked to confirm deletions or restores, choose `1` (Yes) or `2` (No); see
-   [Deletions](#deletions).
+6. If this profile was ingested before, you are asked whether to look for
+   deleted favorites; see [Deletions](#deletions).
 
 **Dump**: write the database out as a file a browser can import.
 
@@ -157,10 +157,7 @@ befave dump --profile work-chrome --browser chrome out.html
    does not change which favorites are included.
 3. Enter the path for the output `.html` file.
 4. Choose the database, as in ingest.
-5. Choose the profile the file is for, usually the browser profile you are about
-   to import it into. Dumping records what that profile now has, so a favorite
-   you later delete there is recognized as a deletion and not re-added.
-6. In the browser, import the file with its bookmark manager's import option.
+5. In the browser, import the file with its bookmark manager's import option.
 
 ### Getting an export file from your browser
 
@@ -179,7 +176,9 @@ Safari's export can be a `.zip`, which `befave` opens itself.
 The default is `~/.befave/favorites.db`; use `--db` to choose
 another file. One table, `bookmarks`, holds the URL, title, folder path, add
 and last-modified dates, tags (Firefox) and the icon (base64 data). The other
-tables (`profiles`, `snapshots`, `profile_items`, `tombstones`) track deletions.
+tables (`profiles`, `ingests`, `ingest_files`, `profile_bookmarks`, `safe_urls`)
+record which profile held which favorite and which ingest last saw it. A
+favorite you delete is kept in `bookmarks` with `deleted = 1`.
 
 ### Using more than one computer
 
@@ -190,7 +189,7 @@ and point both computers at it with `--db`:
 
 ```
 befave ingest --db ~/Dropbox/favorites.db --profile work-chrome bookmarks.html
-befave dump out.html --browser chrome --profile work-chrome --db ~/Dropbox/favorites.db
+befave dump out.html --browser chrome --db ~/Dropbox/favorites.db
 ```
 
 Or copy `~/.befave/favorites.db` between machines. Use it from
@@ -219,10 +218,9 @@ A **profile** is just a label you choose for one browser profile on one computer
 such as `work-chrome` or `home-firefox`. `befave` never reads your browser profile,
 account, passwords, history or sync data. It only reads the exported bookmarks
 HTML file you give it, and the label has one purpose: to let it know when a
-favorite should be deleted, by comparing each file with the previous one from the
-same profile. `befave` keeps a separate history for each
-profile, and asks which one you mean on every ingest and dump (or pass
-`--profile NAME`).
+favorite should be deleted, by comparing each file with what that profile held
+before. `befave` keeps a separate history for each
+profile, and asks which one you mean on every ingest (or pass `--profile NAME`).
 
 You need a separate profile for each place favorites live, because each one holds
 a different set of favorites. With a single shared history, a favorite that is
@@ -230,11 +228,10 @@ missing from one browser would look like something you deleted.
 
 How a profile behaves:
 
-- Each ingest is treated as that profile's complete list of favorites.
-- A favorite that was in the profile's previous ingest but is missing now counts as
-  deleted (see [Deletions](#deletions)).
-- A dump records what that profile now has, so a favorite you later delete in that
-  browser is noticed.
+- Every ingest records which favorites that profile held, tracked or not.
+- A tracked ingest compares the file with that record. Favorites that are missing
+  now are offered for deletion (see [Deletions](#deletions)).
+- Dumping records nothing. `befave` cannot know whether you imported the file.
 - The first ingest of a profile never deletes anything.
 
 ### Example
@@ -242,15 +239,15 @@ How a profile behaves:
 Work Chrome has favorites A, B and C. Home Firefox has A, B and D.
 
 1. Ingest Chrome's export with `--profile work-chrome`, then Firefox's with
-   `--profile home-firefox`. The database now has A, B, C and D. Nothing is
-   deleted, because both were first ingests.
+   `--profile home-firefox`. The database now has A, B, C and D.
 2. Later, you delete B in Chrome, export again, and ingest with
-   `--profile work-chrome`. B was in that profile's last ingest and is gone now, so B
-   is removed from the database.
+   `--profile work-chrome --track-deletions`. B was held by that profile and is
+   gone from the file, so `befave` lists it and asks. If you choose delete, B is
+   removed from the database and later dumps leave it out.
 3. Dump the database for Firefox. The file leaves B out, and it has C, which Firefox didn't
    have before.
-4. Ingesting Firefox's export again as `home-firefox` does not delete C. C was never
-   in that profile's history, so it is not missing from it.
+4. Ingesting Firefox's export again as `home-firefox` does not offer C for deletion,
+   because that profile never held C.
 
 ### Tips
 
@@ -269,29 +266,45 @@ befave compare work-chrome                # work-chrome against the whole databa
 befave compare a b --common               # bare URLs, for scripts
 ```
 
-`compare` only reads the database and never changes it. It uses what each profile
-last **ingested**, meaning the favorites in the export files you gave `befave`.
-A dump does not count: `befave` cannot know whether you imported the file, so if
-you want to see what a browser really holds, export a new file from it and ingest
-it. Comparing one profile with the database shows what a dump would add to that
-browser.
+`compare` may upgrade an old database (see [Deletions](#deletions)) but never
+changes favorites. It uses what each profile held at its ingests, meaning the
+favorites in the export files you gave `befave`. A dump does not count:
+`befave` cannot know whether you imported the file, so if you want to see what a
+browser really holds, export a new file from it and ingest it. Comparing one
+profile with the database shows what a dump would add to that browser.
 
 ## Deletions
 
-Each ingest is treated as the full list of that profile's favorites. A favorite
-that was in the profile's previous ingest but is missing now counts as deleted
-and is removed from the database, so later dumps leave it out for your other
-browsers. A deleted favorite is not brought back by an ingest of another profile
-that still has it.
+Deletion tracking is optional and only matters if you want favorites you delete in
+a browser to disappear from the database too. It works by asking you.
 
-Two safeguards ask for confirmation (`ingest --yes` accepts them):
+1. Every ingest records a run (a UUID, the profile, the file names and the time)
+   and marks each favorite the file contains with that run.
+2. When you ingest a profile that has been ingested before, `befave` asks:
+   "Has this profile been ingested before and do you want to check for deleted
+   favorites?" (or pass `--track-deletions`). Answer No to just add favorites.
+3. At the end of a tracked run, favorites that profile held but that are not in
+   the file are listed with their title, URL, folder, date added and the file and
+   date they were last seen in. You choose delete all, keep all, or decide one
+   by one.
+4. A deleted favorite is flagged `deleted` in the database and left out of dumps.
+   Other profiles are not changed, and an ingest of another profile that still has
+   it does not bring it back.
+5. A favorite you keep is remembered as safe for that profile, so you are not asked
+   about it again.
 
-- **Mass deletion:** if more than 30% of a profile's favorites (for profiles with
-  more than 10) are missing, it may be a partial export, such as a single folder.
-- **Restoring:** a file contains a favorite that was deleted earlier and that
-  profile did not have in its last ingest. Declining keeps it deleted.
+`--yes` deletes every missing favorite without asking. Without a terminal and
+without `--yes`, missing favorites are left alone.
 
-The first ingest of a profile never deletes anything.
+**Restoring:** a file contains a favorite that was deleted earlier and that the
+profile did not hold. You are asked whether to restore it (`--yes` restores).
+
+**Limit:** the first ingest of a profile has nothing to compare, and a favorite
+deleted in a browser right after importing a dump is only noticed once that
+browser has been ingested once after the import.
+
+**Upgrading:** a database from an older version is upgraded in place the next
+time it is opened, and a copy is saved as `<database>.bak`.
 
 ## What dump does
 

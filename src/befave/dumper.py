@@ -4,8 +4,7 @@ import sqlite3
 import sys
 from html import escape
 
-from .ingester import (SCHEMA, TOOLBAR, baseline_items, clean_folder, record_snapshot,
-                       profile_id)
+from .ingester import TOOLBAR, clean_folder, open_db
 
 # Name each browser uses for its toolbar folder on import.
 BROWSER_TOOLBAR = {
@@ -49,11 +48,10 @@ def render(node, out, depth, toolbar_name=None):
     out.append(f"{pad}</DL><p>")
 
 
-def dump(db, path, browser, profile):
-    conn = sqlite3.connect(db)
-    conn.executescript(SCHEMA)
+def dump(db, path, browser):
+    conn = open_db(db)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM bookmarks ORDER BY id").fetchall()
+    rows = conn.execute("SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id").fetchall()
     out = [
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
         '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
@@ -66,20 +64,14 @@ def dump(db, path, browser, profile):
     render(root, out, 0, BROWSER_TOOLBAR[browser])
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(out) + "\n")
-    # Browsers add imported bookmarks to what they already have, so the profile's
-    # new baseline is its previous one plus everything just dumped.
-    sid = profile_id(conn, profile)
-    record_snapshot(conn, sid, "dump",
-                    (baseline_items(conn, sid) or set()) | {r["url_norm"] for r in rows})
-    conn.commit()
     conn.close()
     return len(rows)
 
 
-def run_dump(output, browser, db, profile):
+def run_dump(output, browser, db):
     """Dump db to output for the target browser; returns a process exit status."""
     if not os.path.exists(db):
         print(f"error: database not found: {db}", file=sys.stderr)
         return 1
-    print(f"{output}: {dump(db, output, browser, profile)} bookmarks dumped")
+    print(f"{output}: {dump(db, output, browser)} bookmarks dumped")
     return 0

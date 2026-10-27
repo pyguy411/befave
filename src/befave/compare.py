@@ -1,19 +1,22 @@
-"""Compare what the database knows about a profile, read-only."""
+"""Compare the favorites each profile holds, without changing any data."""
 import os
 import sqlite3
 import sys
 
+from .ingester import open_db
 
-def _ingested(conn, name):
-    """URLs from the profile's latest ingest, or None if it was never ingested."""
-    row = conn.execute(
-        "SELECT s.id FROM snapshots s JOIN profiles p ON p.id = s.profile_id "
-        "WHERE p.name = ? AND s.kind = 'ingest' ORDER BY s.id DESC LIMIT 1", (name,)
-    ).fetchone()
-    if not row:
+
+def _held(conn, name):
+    """URLs the profile holds (not deleted), or None if it was never ingested."""
+    if not conn.execute(
+            "SELECT 1 FROM ingests i JOIN profiles p ON p.id = i.profile_id WHERE p.name = ?",
+            (name,)).fetchone():
         return None
     return {r[0] for r in conn.execute(
-        "SELECT url_norm FROM profile_items WHERE snapshot_id = ?", (row[0],))}
+        "SELECT pb.url_norm FROM profile_bookmarks pb "
+        "JOIN profiles p ON p.id = pb.profile_id "
+        "JOIN bookmarks b ON b.url_norm = pb.url_norm "
+        "WHERE p.name = ? AND b.deleted = 0", (name,))}
 
 
 def compare(db, a, b=None):
@@ -21,19 +24,19 @@ def compare(db, a, b=None):
 
     Without `b`, `a` is compared with every bookmark in the database.
     """
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn = open_db(db)
     try:
-        left = _ingested(conn, a)
+        left = _held(conn, a)
         if left is None:
             raise ValueError(f"profile '{a}' has no ingest in this database")
         if b is None:
-            right = {r[0] for r in conn.execute("SELECT url_norm FROM bookmarks")}
+            right = {r[0] for r in conn.execute("SELECT url_norm FROM bookmarks WHERE deleted = 0")}
         else:
-            right = _ingested(conn, b)
+            right = _held(conn, b)
             if right is None:
                 raise ValueError(f"profile '{b}' has no ingest in this database")
         titles = {r[0]: (r[1], r[2]) for r in conn.execute(
-            "SELECT url_norm, url, title FROM bookmarks")}
+            "SELECT url_norm, url, title FROM bookmarks WHERE deleted = 0")}
     finally:
         conn.close()
     return left & right, left - right, right - left, titles

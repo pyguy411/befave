@@ -4,10 +4,11 @@ import glob
 import os
 import shlex
 import sys
+import time
 
 from .compare import run_compare
 from .dumper import BROWSER_TOOLBAR, run_dump
-from .ingester import DEFAULT_DB, list_profiles, run_ingest
+from .ingester import DEFAULT_DB, has_history, list_profiles, run_ingest
 
 INTERACTIVE = sys.stdin.isatty()
 
@@ -104,6 +105,44 @@ def expand_files(patterns):
     return files
 
 
+def describe(c):
+    seen = "earlier ingest (before the upgrade)"
+    if c["files"]:
+        seen = ", ".join(os.path.basename(f) for f in c["files"])
+    when = time.strftime("%Y-%m-%d", time.localtime(c["taken_at"]))
+    added = (time.strftime("%Y-%m-%d", time.localtime(c["add_date"]))
+             if c["add_date"] else "unknown")
+    return (f"  {c['title'] or c['url']}\n    {c['url']}\n"
+            f"    folder: {c['folder'] or '(none)'}   added: {added}\n"
+            f"    last seen: {seen}, ingest of {when}")
+
+
+def review_candidates(candidates):
+    """Ask what to do with favorites that are missing; returns (delete, keep) url lists."""
+    print(f"{len(candidates)} favorite(s) from earlier ingests of this profile are not in "
+          "this file:")
+    for c in candidates[:20]:
+        print(describe(c))
+    if len(candidates) > 20:
+        print(f"  ... and {len(candidates) - 20} more")
+    urls = [c["url_norm"] for c in candidates]
+    choice = choose("What should happen to them?", [
+        "Delete all of them (they were deleted in the browser)",
+        "Keep all of them (not asked about these again)",
+        "Review one by one",
+    ])
+    if choice == 0:
+        return urls, []
+    if choice == 1:
+        return [], urls
+    delete, keep = [], []
+    for c in candidates:
+        print(describe(c))
+        (delete if choose("This favorite is not in the file:",
+                          ["Delete it", "Keep it"]) == 0 else keep).append(c["url_norm"])
+    return delete, keep
+
+
 def do_ingest(args):
     files = args.files
     if not files:
@@ -122,15 +161,26 @@ def do_ingest(args):
     def profile_for(path):
         return pick_profile(db, given.get(path))
 
-    return run_ingest(files, db, profile_for, args.yes, confirm)
+    def track_for(name):
+        if args.track_deletions:
+            return True
+        if not INTERACTIVE or not has_history(db, name):
+            return False
+        return choose(
+            f"'{name}' was ingested before. Check this file for favorites you deleted? "
+            "(Only needed if you want deletions noticed.)",
+            ["Yes - offer to delete favorites that are missing from this file",
+             "No - only add favorites"]) == 0
+
+    decide = review_candidates if INTERACTIVE and not args.yes else None
+    return run_ingest(files, db, profile_for, track_for, args.yes, confirm, decide)
 
 
 def do_dump(args):
     browser = pick_browser(args.browser)
     output = need(args.output, "output file is required", "Output file (.html)")
-    db = pick_db(args.db)
-    db = os.path.expanduser(db)
-    return run_dump(os.path.expanduser(output), browser, db, pick_profile(db, args.profile))
+    db = os.path.expanduser(pick_db(args.db))
+    return run_dump(os.path.expanduser(output), browser, db)
 
 
 def do_compare(args):
@@ -156,15 +206,17 @@ def build_parser():
     ingest.add_argument("--profile", action="append", default=[],
                       help="browser profile a file comes from; repeat once per file, "
                            "in file order")
+    ingest.add_argument("--track-deletions", action="store_true",
+                      help="the profile was ingested before: offer to delete favorites "
+                           "that are missing from this file")
     ingest.add_argument("--yes", action="store_true",
-                      help="accept deletion and restore confirmations")
+                      help="accept restore confirmations and delete every missing favorite")
     ingest.set_defaults(func=do_ingest)
 
     dump = sub.add_parser("dump", help="dump the database out as a file for a target browser")
     dump.add_argument("output", nargs="?", help="output .html file")
     dump.add_argument("--browser", choices=sorted(BROWSER_TOOLBAR), help="target browser")
     dump.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
-    dump.add_argument("--profile", help="name of the browser profile the file is for")
     dump.set_defaults(func=do_dump)
 
     cmp = sub.add_parser("compare", help="compare the favorites ingested from two profiles, "

@@ -31,7 +31,7 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(only_b, {url(4)})
 
     def test_dump_is_not_assumed_imported(self):
-        run_dump(os.path.join(self.tmp.name, "out.html"), "chrome", self.db, "a")
+        run_dump(os.path.join(self.tmp.name, "out.html"), "chrome", self.db)
         _, _, only_b, _ = compare(self.db, "a")
         self.assertEqual(only_b, {url(4)})
 
