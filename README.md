@@ -110,8 +110,8 @@ befave ingest --profile ff --profile safari --profile chrome --profile opera 'ex
   `chrome_bookmarks.html`.
 - **One profile per file, or several files for one profile.** Interactively you
   are asked for each file's profile in turn, with the option to reuse the previous
-  file's profile. In a script, give one `--profile` per
-  file, in the same order as the files. Files given the same profile are ingested
+  file's profile. In a script, give one `--profile` to use it for every file, or one per
+  file in the same order as the files. Files given the same profile are ingested
   together as one combined list of that profile's favorites, so none of them
   counts as deleting the favorites in another.
 - A pattern that matches nothing is an error, and a file matched twice is

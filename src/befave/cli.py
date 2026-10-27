@@ -151,10 +151,13 @@ def do_ingest(args):
         files = shlex.split(
             ask("Browser export file(s) to ingest (.html or .zip, space separated)"))
     files = expand_files(files)
-    if args.profile and len(args.profile) != len(files):
-        raise SystemExit(f"befave: error: {len(files)} file(s) need {len(files)} --profile "
-                         f"option(s), in the same order; got {len(args.profile)}")
-    given = dict(zip(files, args.profile))
+    profiles = args.profile
+    if len(profiles) == 1:
+        profiles = profiles * len(files)
+    if profiles and len(profiles) != len(files):
+        raise SystemExit(f"befave: error: {len(files)} file(s) need one --profile for all "
+                         f"or {len(files)} in file order; got {len(profiles)}")
+    given = dict(zip(files, profiles))
     db = pick_db(args.db)
     db = os.path.expanduser(db)
 
