@@ -5,6 +5,8 @@ All notable changes to `befave` are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
 ### Added
 
 - **Deletion tracking.** `befave` can now tell when a favorite you deleted in a

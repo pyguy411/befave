@@ -1,6 +1,6 @@
 [project]
 name = "befave"
-version = "0.1.0"
+version = "0.1.1"
 description = "Keep favorites in sync across Chrome, Firefox, Safari and Opera via a deduplicated sqlite3 database"
 readme = "README.md"
 license = "MIT"
