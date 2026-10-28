@@ -1,4 +1,5 @@
 """Dump the favorites db to a Netscape bookmark HTML file that any browser can import."""
+
 import os
 import sqlite3
 import sys
@@ -26,7 +27,9 @@ def build_tree(rows):
 
 
 def attr(name, value):
-    return f' {name}="{escape(str(value), quote=True)}"' if value not in (None, "") else ""
+    return (
+        f' {name}="{escape(str(value), quote=True)}"' if value not in (None, "") else ""
+    )
 
 
 def render(node, out, depth, toolbar_name=None):
@@ -34,7 +37,9 @@ def render(node, out, depth, toolbar_name=None):
     out.append(f"{pad}<DL><p>")
     for name, child in node["folders"].items():
         if toolbar_name and name == TOOLBAR:
-            flag = "" if toolbar_name == "Favorites" else ' PERSONAL_TOOLBAR_FOLDER="true"'
+            flag = (
+                "" if toolbar_name == "Favorites" else ' PERSONAL_TOOLBAR_FOLDER="true"'
+            )
             out.append(f"{pad}    <DT><H3{flag}>{escape(toolbar_name)}</H3>")
         else:
             out.append(f"{pad}    <DT><H3>{escape(name)}</H3>")
@@ -58,9 +63,12 @@ def dump(db, path, browser, profiles=None):
             "SELECT * FROM bookmarks WHERE deleted = 0 AND url_norm IN ("
             "SELECT pb.url_norm FROM profile_bookmarks pb JOIN profiles p "
             f"ON p.id = pb.profile_id WHERE p.name IN ({marks})) ORDER BY id",
-            list(profiles)).fetchall()
+            list(profiles),
+        ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id"
+        ).fetchall()
     out = [
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
         '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
@@ -85,8 +93,11 @@ def run_dump(output, browser, db, profiles=None):
     known = list_profiles(db)
     unknown = [p for p in profiles or [] if p not in known]
     if unknown:
-        print(f"error: no such profile: {', '.join(unknown)}"
-              f" (known: {', '.join(known) or 'none'})", file=sys.stderr)
+        print(
+            f"error: no such profile: {', '.join(unknown)}"
+            f" (known: {', '.join(known) or 'none'})",
+            file=sys.stderr,
+        )
         return 1
     print(f"{output}: {dump(db, output, browser, profiles)} bookmarks dumped")
     return 0

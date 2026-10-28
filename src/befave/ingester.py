@@ -1,4 +1,5 @@
 """Ingest Netscape-format bookmark exports (.html or .zip) into a sqlite3 db."""
+
 import os
 import re
 import shutil
@@ -17,14 +18,23 @@ WEB_SCHEMES = ("http", "https", "ftp")
 BUNDLED_FOLDERS = {"mozilla firefox"}
 # Links Safari pre-populates in its top-level Favorites folder.
 SAFARI_DEFAULTS = {
-    "https://www.apple.com/", "https://www.icloud.com/", "https://www.yahoo.com/",
-    "https://www.bing.com/", "https://www.google.com/?client=safari&channel=mac_bm",
-    "https://www.wikipedia.org/", "https://www.facebook.com/", "https://twitter.com/",
-    "https://www.linkedin.com/", "https://www.weather.com/", "https://www.yelp.com/",
+    "https://www.apple.com/",
+    "https://www.icloud.com/",
+    "https://www.yahoo.com/",
+    "https://www.bing.com/",
+    "https://www.google.com/?client=safari&channel=mac_bm",
+    "https://www.wikipedia.org/",
+    "https://www.facebook.com/",
+    "https://twitter.com/",
+    "https://www.linkedin.com/",
+    "https://www.weather.com/",
+    "https://www.yelp.com/",
     "https://www.tripadvisor.com/",
 }
 
-BUNDLED_URL = re.compile(r"^https://www\.mozilla\.org/(?:[\w-]+/)?firefox/(?:customize|help)/?$")
+BUNDLED_URL = re.compile(
+    r"^https://www\.mozilla\.org/(?:[\w-]+/)?firefox/(?:customize|help)/?$"
+)
 
 # All browsers' toolbar folders are stored under this one name.
 TOOLBAR = "Bookmarks Bar"
@@ -87,7 +97,9 @@ def normalize_url(url):
     except ValueError:
         return url
     if not parts.scheme or not parts.netloc:
-        return urlunsplit((parts.scheme.lower(), parts.netloc, parts.path, parts.query, ""))
+        return urlunsplit(
+            (parts.scheme.lower(), parts.netloc, parts.path, parts.query, "")
+        )
     host = parts.netloc
     if "@" in host:
         userinfo, _, hostport = host.rpartition("@")
@@ -97,7 +109,9 @@ def normalize_url(url):
     query = parts.query
     if "utm_" in query.lower():
         pairs = parse_qsl(query, keep_blank_values=True)
-        query = urlencode([(k, v) for k, v in pairs if not k.lower().startswith("utm_")])
+        query = urlencode(
+            [(k, v) for k, v in pairs if not k.lower().startswith("utm_")]
+        )
     return urlunsplit((parts.scheme.lower(), host, parts.path, query, ""))
 
 
@@ -149,8 +163,8 @@ class BookmarkParser(HTMLParser):
             name = "".join(self.buf).strip()
             top_level = not any(self.folders)
             if top_level and (
-                    self.folder_attrs.get("personal_toolbar_folder", "").lower() == "true"
-                    or name == "Favorites"  # Safari's toolbar folder
+                self.folder_attrs.get("personal_toolbar_folder", "").lower() == "true"
+                or name == "Favorites"  # Safari's toolbar folder
             ):
                 name = TOOLBAR
             self.pending_folder = name
@@ -170,15 +184,17 @@ class BookmarkParser(HTMLParser):
         url = a.get("href")
         if not url or not url.strip():
             return
-        self.bookmarks.append({
-            "url": url.strip(),
-            "title": "".join(self.buf).strip(),
-            "folder": clean_folder("/".join(f for f in self.folders if f)),
-            "add_date": to_int(a.get("add_date")),
-            "last_modified": to_int(a.get("last_modified")),
-            "tags": a.get("tags"),
-            "icon": a.get("icon"),
-        })
+        self.bookmarks.append(
+            {
+                "url": url.strip(),
+                "title": "".join(self.buf).strip(),
+                "folder": clean_folder("/".join(f for f in self.folders if f)),
+                "add_date": to_int(a.get("add_date")),
+                "last_modified": to_int(a.get("last_modified")),
+                "tags": a.get("tags"),
+                "icon": a.get("icon"),
+            }
+        )
 
 
 def is_bundled(b):
@@ -193,8 +209,12 @@ def read_export(path):
     """Return the HTML text of an export file, unzipping if needed."""
     if zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as z:
-            names = [n for n in z.namelist()
-                     if n.lower().endswith((".html", ".htm")) and not n.startswith("__MACOSX")]
+            names = [
+                n
+                for n in z.namelist()
+                if n.lower().endswith((".html", ".htm"))
+                and not n.startswith("__MACOSX")
+            ]
             if not names:
                 raise ValueError(f"no html file found in {path}")
             return z.read(names[0]).decode("utf-8", errors="replace")
@@ -220,7 +240,10 @@ def profile_id(conn, name):
 def open_db(db):
     """Open the database, creating or upgrading the schema as needed."""
     conn = sqlite3.connect(db)
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    tables = {
+        r[0]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
     if "snapshots" in tables:
         migrate(conn, db)
     conn.executescript(SCHEMA)
@@ -240,26 +263,35 @@ def migrate(conn, db):
         shutil.copyfile(db, backup)
     columns = {r[1] for r in conn.execute("PRAGMA table_info(bookmarks)")}
     if "deleted" not in columns:
-        conn.execute("ALTER TABLE bookmarks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "ALTER TABLE bookmarks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
+        )
         conn.execute("ALTER TABLE bookmarks ADD COLUMN deleted_at INTEGER")
     conn.executescript(SCHEMA)
-    for pid, in conn.execute("SELECT id FROM profiles").fetchall():
+    for (pid,) in conn.execute("SELECT id FROM profiles").fetchall():
         snap = conn.execute(
             "SELECT id, taken_at FROM snapshots WHERE profile_id = ? AND kind = 'ingest' "
-            "ORDER BY id DESC LIMIT 1", (pid,)).fetchone()
+            "ORDER BY id DESC LIMIT 1",
+            (pid,),
+        ).fetchone()
         if not snap:
             continue
         run = str(uuid.uuid4())
-        conn.execute("INSERT INTO ingests (id, profile_id, taken_at, tracked) VALUES (?,?,?,0)",
-                     (run, pid, snap[1]))
+        conn.execute(
+            "INSERT INTO ingests (id, profile_id, taken_at, tracked) VALUES (?,?,?,0)",
+            (run, pid, snap[1]),
+        )
         conn.execute(
             "INSERT OR IGNORE INTO profile_bookmarks "
             "SELECT ?, pi.url_norm, ?, b.title, b.folder, b.add_date "
             "FROM profile_items pi JOIN bookmarks b ON b.url_norm = pi.url_norm "
-            "WHERE pi.snapshot_id = ?", (pid, run, snap[0]))
+            "WHERE pi.snapshot_id = ?",
+            (pid, run, snap[0]),
+        )
     conn.execute(
         "INSERT OR IGNORE INTO bookmarks (url_norm, url, deleted, deleted_at) "
-        "SELECT url_norm, url_norm, 1, deleted_at FROM tombstones")
+        "SELECT url_norm, url_norm, 1, deleted_at FROM tombstones"
+    )
     for table in ("profile_items", "snapshots", "tombstones"):
         conn.execute(f"DROP TABLE {table}")
     conn.commit()
@@ -285,13 +317,23 @@ def has_history(db, name):
     try:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
         if "ingests" in tables:
-            return conn.execute(
-                "SELECT 1 FROM ingests i JOIN profiles p ON p.id = i.profile_id "
-                "WHERE p.name = ?", (name,)).fetchone() is not None
+            return (
+                conn.execute(
+                    "SELECT 1 FROM ingests i JOIN profiles p ON p.id = i.profile_id "
+                    "WHERE p.name = ?",
+                    (name,),
+                ).fetchone()
+                is not None
+            )
         if "snapshots" in tables:
-            return conn.execute(
-                "SELECT 1 FROM snapshots s JOIN profiles p ON p.id = s.profile_id "
-                "WHERE p.name = ? AND s.kind = 'ingest'", (name,)).fetchone() is not None
+            return (
+                conn.execute(
+                    "SELECT 1 FROM snapshots s JOIN profiles p ON p.id = s.profile_id "
+                    "WHERE p.name = ? AND s.kind = 'ingest'",
+                    (name,),
+                ).fetchone()
+                is not None
+            )
         return False
     finally:
         conn.close()
@@ -299,7 +341,12 @@ def has_history(db, name):
 
 def _candidates(conn, sid, items, previous):
     """Favorites this profile held before that are not in `items` and are not marked safe."""
-    safe = {r[0] for r in conn.execute("SELECT url_norm FROM safe_urls WHERE profile_id = ?", (sid,))}
+    safe = {
+        r[0]
+        for r in conn.execute(
+            "SELECT url_norm FROM safe_urls WHERE profile_id = ?", (sid,)
+        )
+    }
     files = {}
     out = []
     for url_norm, row in previous.items():
@@ -307,21 +354,32 @@ def _candidates(conn, sid, items, previous):
             continue
         run = row["ingest_id"]
         if run not in files:
-            files[run] = [r[0] for r in conn.execute(
-                "SELECT path FROM ingest_files WHERE ingest_id = ? ORDER BY rowid", (run,))]
-        out.append({
-            "url_norm": url_norm,
-            "url": row["url"],
-            "title": row["title"] or row["bookmark_title"] or "",
-            "folder": row["folder"] or "",
-            "add_date": row["add_date"],
-            "files": files[run],
-            "taken_at": row["taken_at"],
-        })
-    return sorted(out, key=lambda c: (c["folder"].lower(), c["title"].lower(), c["url"]))
+            files[run] = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT path FROM ingest_files WHERE ingest_id = ? ORDER BY rowid",
+                    (run,),
+                )
+            ]
+        out.append(
+            {
+                "url_norm": url_norm,
+                "url": row["url"],
+                "title": row["title"] or row["bookmark_title"] or "",
+                "folder": row["folder"] or "",
+                "add_date": row["add_date"],
+                "files": files[run],
+                "taken_at": row["taken_at"],
+            }
+        )
+    return sorted(
+        out, key=lambda c: (c["folder"].lower(), c["title"].lower(), c["url"])
+    )
 
 
-def import_files(conn, paths, profile, track=False, assume_yes=False, confirm=None, decide=None):
+def import_files(
+    conn, paths, profile, track=False, assume_yes=False, confirm=None, decide=None
+):
     """Ingest browser export file(s) as one run for `profile`.
 
     With several files the earliest one wins when they hold the same URL. When `track`
@@ -348,27 +406,39 @@ def import_files(conn, paths, profile, track=False, assume_yes=False, confirm=No
 
     sid = profile_id(conn, profile)
     conn.row_factory = sqlite3.Row
-    previous = {r["url_norm"]: r for r in conn.execute(
-        "SELECT pb.url_norm, pb.ingest_id, pb.title, pb.folder, pb.add_date, "
-        "b.url, b.title AS bookmark_title, b.deleted, i.taken_at "
-        "FROM profile_bookmarks pb JOIN bookmarks b ON b.url_norm = pb.url_norm "
-        "JOIN ingests i ON i.id = pb.ingest_id WHERE pb.profile_id = ?", (sid,))}
-    deleted_in_db = {r[0] for r in conn.execute("SELECT url_norm FROM bookmarks WHERE deleted = 1")}
+    previous = {
+        r["url_norm"]: r
+        for r in conn.execute(
+            "SELECT pb.url_norm, pb.ingest_id, pb.title, pb.folder, pb.add_date, "
+            "b.url, b.title AS bookmark_title, b.deleted, i.taken_at "
+            "FROM profile_bookmarks pb JOIN bookmarks b ON b.url_norm = pb.url_norm "
+            "JOIN ingests i ON i.id = pb.ingest_id WHERE pb.profile_id = ?",
+            (sid,),
+        )
+    }
+    deleted_in_db = {
+        r[0] for r in conn.execute("SELECT url_norm FROM bookmarks WHERE deleted = 1")
+    }
     conn.row_factory = None
 
     now = int(time.time())
     run = str(uuid.uuid4())
-    conn.execute("INSERT INTO ingests (id, profile_id, taken_at, tracked) VALUES (?,?,?,?)",
-                 (run, sid, now, int(track)))
-    conn.executemany("INSERT INTO ingest_files VALUES (?,?,?,?,?)",
-                     [(run, path, n, mtime, now) for path, n, mtime in file_info])
+    conn.execute(
+        "INSERT INTO ingests (id, profile_id, taken_at, tracked) VALUES (?,?,?,?)",
+        (run, sid, now, int(track)),
+    )
+    conn.executemany(
+        "INSERT INTO ingest_files VALUES (?,?,?,?,?)",
+        [(run, path, n, mtime, now) for path, n, mtime in file_info],
+    )
 
     # A deleted favorite this profile still holds is a stale copy; one it did not
     # hold was added again, so ask before bringing it back.
     stale = {u for u in items & deleted_in_db if u in previous}
     revived = (items & deleted_in_db) - stale
-    if revived and not ok(f"{len(revived)} bookmark(s) in this file were deleted earlier. "
-                          "Restore them?"):
+    if revived and not ok(
+        f"{len(revived)} bookmark(s) in this file were deleted earlier. Restore them?"
+    ):
         revived = set()
     blocked = ((items & deleted_in_db) - revived) | stale
 
@@ -383,16 +453,26 @@ def import_files(conn, paths, profile, track=False, assume_yes=False, confirm=No
         else:
             to_delete, to_keep = [], []
         for url in to_delete:
-            conn.execute("UPDATE bookmarks SET deleted = 1, deleted_at = ? WHERE url_norm = ?",
-                         (now, url))
-            conn.execute("DELETE FROM profile_bookmarks WHERE profile_id = ? AND url_norm = ?",
-                         (sid, url))
+            conn.execute(
+                "UPDATE bookmarks SET deleted = 1, deleted_at = ? WHERE url_norm = ?",
+                (now, url),
+            )
+            conn.execute(
+                "DELETE FROM profile_bookmarks WHERE profile_id = ? AND url_norm = ?",
+                (sid, url),
+            )
         for url in to_keep:
-            conn.execute("INSERT OR REPLACE INTO safe_urls VALUES (?,?,?,?)", (sid, url, run, now))
+            conn.execute(
+                "INSERT OR REPLACE INTO safe_urls VALUES (?,?,?,?)",
+                (sid, url, run, now),
+            )
         deleted, kept = len(to_delete), len(to_keep)
 
     for url in revived:
-        conn.execute("UPDATE bookmarks SET deleted = 0, deleted_at = NULL WHERE url_norm = ?", (url,))
+        conn.execute(
+            "UPDATE bookmarks SET deleted = 0, deleted_at = NULL WHERE url_norm = ?",
+            (url,),
+        )
     added = 0
     for url in items - blocked:
         b = rows[url]
@@ -400,23 +480,42 @@ def import_files(conn, paths, profile, track=False, assume_yes=False, confirm=No
             "INSERT OR IGNORE INTO bookmarks "
             "(url_norm, url, title, folder, add_date, last_modified, tags, icon) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            (url, b["url"], b["title"], b["folder"],
-             b["add_date"], b["last_modified"], b["tags"], b["icon"]),
+            (
+                url,
+                b["url"],
+                b["title"],
+                b["folder"],
+                b["add_date"],
+                b["last_modified"],
+                b["tags"],
+                b["icon"],
+            ),
         )
         added += cur.rowcount
-        conn.execute("INSERT OR REPLACE INTO profile_bookmarks VALUES (?,?,?,?,?,?)",
-                     (sid, url, run, b["title"], b["folder"], b["add_date"]))
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_bookmarks VALUES (?,?,?,?,?,?)",
+            (sid, url, run, b["title"], b["folder"], b["add_date"]),
+        )
     # Stale copies of deleted favorites stop being held once a file no longer has them.
     for url in deleted_in_db - items:
-        conn.execute("DELETE FROM profile_bookmarks WHERE profile_id = ? AND url_norm = ?",
-                     (sid, url))
+        conn.execute(
+            "DELETE FROM profile_bookmarks WHERE profile_id = ? AND url_norm = ?",
+            (sid, url),
+        )
     conn.commit()
-    return {"found": len(rows), "added": added, "missing": missing, "deleted": deleted,
-            "kept": kept, "first": not previous}
+    return {
+        "found": len(rows),
+        "added": added,
+        "missing": missing,
+        "deleted": deleted,
+        "kept": kept,
+        "first": not previous,
+    }
 
 
-def run_ingest(files, db, profile=None, track=False, assume_yes=False, confirm=None,
-               decide=None):
+def run_ingest(
+    files, db, profile=None, track=False, assume_yes=False, confirm=None, decide=None
+):
     """Ingest each file into db; returns an exit status.
 
     `profile` may be a name or a callable taking the file path. `track` may be a bool or
@@ -438,12 +537,16 @@ def run_ingest(files, db, profile=None, track=False, assume_yes=False, confirm=N
             print(f"error: {e}", file=sys.stderr)
             status = 1
             continue
-        line = (f"{', '.join(paths)} (profile {name}): {r['found']} found, {r['added']} new, "
-                f"{r['found'] - r['added']} duplicates skipped")
+        line = (
+            f"{', '.join(paths)} (profile {name}): {r['found']} found, {r['added']} new, "
+            f"{r['found'] - r['added']} duplicates skipped"
+        )
         if tracking and r["first"]:
             line += f"; no earlier ingest of '{name}', nothing to compare"
         elif tracking:
-            line += f"; {r['missing']} missing, {r['deleted']} deleted, {r['kept']} kept"
+            line += (
+                f"; {r['missing']} missing, {r['deleted']} deleted, {r['kept']} kept"
+            )
             if r["missing"] and not (r["deleted"] or r["kept"]):
                 line += " (left alone; pass --yes to delete them)"
         print(line)
