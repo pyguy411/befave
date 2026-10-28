@@ -205,6 +205,21 @@ class DeletionTests(unittest.TestCase):
         self.assertEqual(folders["https://b.example/"], "Bookmarks Bar/mine/Imported")
         self.assertEqual(self.dump().count("<H3>Imported</H3>"), 1)
 
+    def test_trash_folder_and_subfolders_are_skipped(self):
+        path = os.path.join(self.tmp.name, "trash.html")
+        with open(path, "w") as f:
+            f.write("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n"
+                    "<DL><p><DT><H3>tRaSh</H3><DL><p>"
+                    f'<DT><A HREF="{url(1)}">trashed</A>'
+                    "<DT><H3>nested</H3><DL><p>"
+                    f'<DT><A HREF="{url(2)}">also trashed</A>'
+                    "</DL><p></DL><p>"
+                    "<DT><H3>regular</H3><DL><p>"
+                    f'<DT><A HREF="{url(3)}">kept</A>'
+                    "</DL><p></DL><p>")
+        self.assertEqual(run_ingest([path], self.db, "o"), 0)
+        self.assertEqual(self.urls(), {url(3)})
+
 
 OLD_SCHEMA = """
 CREATE TABLE bookmarks (id INTEGER PRIMARY KEY, url_norm TEXT NOT NULL UNIQUE,

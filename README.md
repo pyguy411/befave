@@ -216,9 +216,11 @@ another, so two copies don’t diverge.
 - **Web links only.** Only `http`, `https` and `ftp` links are kept.
   Browser internals such as `chrome://`, `about:`, `javascript:`, `moz-extension://`,
   `place:` and `file://` are skipped.
-- **Browser defaults are skipped.** Firefox’s “Mozilla Firefox” folder (and its stray
-  help/customize links) and the 12 links Safari ships in Favorites.
-  The lists are `BUNDLED_FOLDERS` and `SAFARI_DEFAULTS` in `ingester.py`.
+- **Browser defaults and Trash folders are skipped.** Firefox’s “Mozilla Firefox”
+  folder (and its stray help/customize links), the 12 links Safari ships in Favorites,
+  and every bookmark inside a folder named “Trash” (as in the Opera export). Folder
+  matching is case-insensitive. The lists are `SKIPPED_FOLDERS` and `SAFARI_DEFAULTS`
+  in `ingester.py`.
 - **Toolbar folders are normalized.** Chrome/Opera “Bookmarks Bar”, Firefox “Bookmarks
   Toolbar” and Safari “Favorites” are all stored as `Bookmarks Bar`.
 - **The “Imported” wrapper folder is dropped.** See the [FAQ](#faq).

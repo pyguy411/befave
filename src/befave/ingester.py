@@ -14,8 +14,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".befave", "favorites.db")
 WEB_SCHEMES = ("http", "https", "ftp")
 
-# Folders browsers ship by default; the whole subtree is skipped.
-BUNDLED_FOLDERS = {"mozilla firefox"}
+# Folders whose whole subtree is skipped.
+SKIPPED_FOLDERS = {"mozilla firefox", "trash"}
 # Links Safari pre-populates in its top-level Favorites folder.
 SAFARI_DEFAULTS = {
     "https://www.apple.com/",
@@ -197,8 +197,8 @@ class BookmarkParser(HTMLParser):
         )
 
 
-def is_bundled(b):
-    if any(p.lower() in BUNDLED_FOLDERS for p in b["folder"].split("/")):
+def is_skipped(b):
+    if any(p.lower() in SKIPPED_FOLDERS for p in b["folder"].split("/")):
         return True
     if BUNDLED_URL.match(b["url"]):
         return True
@@ -397,7 +397,7 @@ def import_files(
         before = len(rows)
         parsed = 0
         for b in parse_export(path):
-            if is_bundled(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
+            if is_skipped(b) or urlsplit(b["url"]).scheme.lower() not in WEB_SCHEMES:
                 continue
             parsed += 1
             rows.setdefault(normalize_url(b["url"]), b)

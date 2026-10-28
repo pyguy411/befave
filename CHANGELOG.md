@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-28
+
 ### Added
 
 - `query` command: `--show-deleted`, `--profiles`, `--history`, `--safe`, `--search` and
@@ -12,6 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - `dump --profile NAME` writes only the favorites a profile holds.
   Repeat it to merge several profiles into one file.
   Interactive dumps offer the choice.
+
+### Changed
+
+- Ingest skips bookmarks in folders named “Trash”, including their subfolders.
 
 ## [0.1.1] - 2026-10-26
 
