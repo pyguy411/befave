@@ -184,11 +184,31 @@ Safari’s export can be a `.zip`, which `befave` opens itself.
 ### Database
 
 The default is `~/.befave/favorites.db`; use `--db` to choose another file.
-One table, `bookmarks`, holds the URL, title, folder path, add and last-modified dates,
-tags (Firefox) and the icon (base64 data).
-The other tables (`profiles`, `ingests`, `ingest_files`, `profile_bookmarks`,
-`safe_urls`) record which profile held which favorite and which ingest last saw it.
-A favorite you delete is kept in `bookmarks` with `deleted = 1`.
+All profiles contribute favorites to the same `bookmarks` table. Its normalized URL is
+unique, so a favorite found in several profiles is stored once; the details from the
+first ingest that added it are kept. The `profile_bookmarks` table separately records
+which favorites each profile held at its latest ingest. A dump of the whole database
+exports each non-deleted favorite once, while a profile-filtered dump exports the
+deduplicated union of favorites held by the selected profiles.
+
+The tables are:
+
+- **`bookmarks`** — the shared, deduplicated favorites: URL, title, folder path, dates,
+  tags (Firefox), icon reference, and deletion status. Deleted favorites stay here with
+  `deleted = 1` and are omitted from dumps.
+- **`icons`** — base64 bookmark icons, stored once and referenced from `bookmarks`.
+- **`profiles`** — the named browser profiles used to keep each browser's set and
+  deletion history separate.
+- **`ingests`** — one record per profile ingest run, including when it ran and whether
+  deletion tracking was enabled.
+- **`ingest_files`** — the files included in each run, with their paths, number of
+  favorites found, file modification times and ingest times.
+- **`profile_bookmarks`** — the favorites currently recorded for each profile, along
+  with the ingest that last saw each one and its profile-specific title, folder and
+  add date. This is how `befave` knows what that profile held, independently of the
+  shared details in `bookmarks`.
+- **`safe_urls`** — favorites you chose to keep when they were missing during a tracked
+  ingest, so they are not offered for deletion again for that profile.
 
 ### Using more than one computer
 
