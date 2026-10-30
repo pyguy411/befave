@@ -60,14 +60,16 @@ def dump(db, path, browser, profiles=None):
     if profiles:
         marks = ",".join("?" * len(profiles))
         rows = conn.execute(
-            "SELECT * FROM bookmarks WHERE deleted = 0 AND url_norm IN ("
+            "SELECT b.*, i.icon FROM bookmarks b LEFT JOIN icons i ON i.id = b.icon_id "
+            "WHERE b.deleted = 0 AND b.url_norm IN ("
             "SELECT pb.url_norm FROM profile_bookmarks pb JOIN profiles p "
-            f"ON p.id = pb.profile_id WHERE p.name IN ({marks})) ORDER BY id",
+            f"ON p.id = pb.profile_id WHERE p.name IN ({marks})) ORDER BY b.id",
             list(profiles),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM bookmarks WHERE deleted = 0 ORDER BY id"
+            "SELECT b.*, i.icon FROM bookmarks b LEFT JOIN icons i ON i.id = b.icon_id "
+            "WHERE b.deleted = 0 ORDER BY b.id"
         ).fetchall()
     out = [
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>",

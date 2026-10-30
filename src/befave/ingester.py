@@ -40,6 +40,10 @@ BUNDLED_URL = re.compile(
 TOOLBAR = "Bookmarks Bar"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS icons (
+    id INTEGER PRIMARY KEY,
+    icon TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS bookmarks (
     id INTEGER PRIMARY KEY,
     url_norm TEXT NOT NULL UNIQUE,
@@ -49,7 +53,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     add_date INTEGER,
     last_modified INTEGER,
     tags TEXT,
-    icon TEXT,
+    icon_id INTEGER REFERENCES icons(id),
     deleted INTEGER NOT NULL DEFAULT 0,
     deleted_at INTEGER
 );
@@ -476,9 +480,15 @@ def import_files(
     added = 0
     for url in items - blocked:
         b = rows[url]
+        icon_id = None
+        if b["icon"]:
+            conn.execute("INSERT OR IGNORE INTO icons (icon) VALUES (?)", (b["icon"],))
+            icon_id = conn.execute(
+                "SELECT id FROM icons WHERE icon = ?", (b["icon"],)
+            ).fetchone()[0]
         cur = conn.execute(
             "INSERT OR IGNORE INTO bookmarks "
-            "(url_norm, url, title, folder, add_date, last_modified, tags, icon) "
+            "(url_norm, url, title, folder, add_date, last_modified, tags, icon_id) "
             "VALUES (?,?,?,?,?,?,?,?)",
             (
                 url,
@@ -488,7 +498,7 @@ def import_files(
                 b["add_date"],
                 b["last_modified"],
                 b["tags"],
-                b["icon"],
+                icon_id,
             ),
         )
         added += cur.rowcount
