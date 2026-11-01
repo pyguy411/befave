@@ -3,7 +3,19 @@
 All notable changes to `befave` are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.3] - 2026-10-28
+
+### Changed
+
+- **Breaking:** icons are stored once in a new `icons` table and referenced from
+  `bookmarks.icon_id`, replacing the `bookmarks.icon` column, so favorites that share an
+  icon no longer repeat the data.
+  Databases created by 0.1.2 or earlier are not upgraded for this change; start a new
+  database and ingest your exports again.
+- README: the Database section now explains each table and how several profiles
+  contribute to the single deduplicated `bookmarks` table that dumps export.
+- Package metadata: added keywords and classifiers.
+
 
 ## [0.1.2] - 2026-10-28
 
