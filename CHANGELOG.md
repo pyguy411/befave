@@ -3,7 +3,7 @@
 All notable changes to `befave` are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.4] - 2026-11-25
 
 ### Added
 
@@ -11,6 +11,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
   that are in a different folder than that profile held last time (move all, leave all,
   or one by one).
   `--yes` moves them all; without a terminal they are left alone.
+- `housekeeping --validate-urls`: checks URLs without a saved HTTP response code and
+  records their response status.
+- `query --url-status`: shows saved HTTP response codes for favorites.
+- `dump --include-invalid`: includes favorites with a non-200 or unknown HTTP status.
+
+### Changed
+
+- `dump` now includes only favorites with an HTTP 200 status by default. Use
+  `--include-invalid` to include favorites regardless of HTTP status.
 
 ## [0.1.3] - 2026-10-28
 
