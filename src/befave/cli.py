@@ -168,6 +168,39 @@ def review_candidates(candidates):
     return delete, keep
 
 
+def review_folder_changes(changes):
+    """Ask which favorites should move to the folder in the file; returns url list."""
+    print(f"{len(changes)} favorite(s) are in a different folder than before:")
+    for c in changes[:20]:
+        print(
+            f"  {c['title'] or c['url']}\n    {c['url']}\n"
+            f"    from: {c['old_folder'] or '(none)'}   to: {c['new_folder'] or '(none)'}"
+        )
+    if len(changes) > 20:
+        print(f"  ... and {len(changes) - 20} more")
+    choice = choose(
+        "What should happen to them?",
+        [
+            "Move all of them to the new folder",
+            "Leave all of them where they are",
+            "Review one by one",
+        ],
+    )
+    if choice == 0:
+        return [c["url_norm"] for c in changes]
+    if choice == 1:
+        return []
+    move = []
+    for c in changes:
+        print(
+            f"  {c['title'] or c['url']}\n    from: {c['old_folder'] or '(none)'}"
+            f"   to: {c['new_folder'] or '(none)'}"
+        )
+        if choose("Move this favorite?", ["Move it", "Leave it"]) == 0:
+            move.append(c["url_norm"])
+    return move
+
+
 def do_ingest(args):
     files = args.files
     if not files:
@@ -226,7 +259,18 @@ def do_ingest(args):
         )
 
     decide = review_candidates if INTERACTIVE and not args.yes else None
-    return run_ingest(files, db, profile_for, track_for, args.yes, confirm, decide)
+    decide_folders = review_folder_changes if INTERACTIVE and not args.yes else None
+    return run_ingest(
+        files,
+        db,
+        profile_for,
+        track_for,
+        args.yes,
+        confirm,
+        decide,
+        args.folder_updates,
+        decide_folders,
+    )
 
 
 def do_dump(args):
@@ -326,9 +370,16 @@ def build_parser():
         "that are missing from this file",
     )
     ingest.add_argument(
+        "--folder-updates",
+        action="store_true",
+        help="the profile was ingested before: offer to move favorites that are "
+        "in a different folder than last time",
+    )
+    ingest.add_argument(
         "--yes",
         action="store_true",
-        help="accept restore confirmations and delete every missing favorite",
+        help="accept restore confirmations, delete every missing favorite and "
+        "move every favorite whose folder changed",
     )
     ingest.set_defaults(func=do_ingest)
 

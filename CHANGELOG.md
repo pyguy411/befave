@@ -3,6 +3,15 @@
 All notable changes to `befave` are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- `ingest --folder-updates`: for a profile ingested before, offers to move favorites
+  that are in a different folder than that profile held last time (move all, leave all,
+  or one by one).
+  `--yes` moves them all; without a terminal they are left alone.
+
 ## [0.1.3] - 2026-10-28
 
 ### Changed

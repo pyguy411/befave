@@ -84,7 +84,8 @@ befave dump out.html --browser firefox --db a.sqlite3
 | `ingest` | `--profile NAME` | Profile a file comes from; once per file, in order |
 | `ingest` | `--db PATH` | Database file (default `~/.befave/favorites.db`) |
 | `ingest` | `--track-deletions` | Review favorites missing since the profile’s last ingest |
-| `ingest` | `--yes` | Delete all missing favorites and accept restores |
+| `ingest` | `--folder-updates` | Review favorites the profile now has in a different folder |
+| `ingest` | `--yes` | Delete all missing favorites, accept restores, move all changed folders |
 | `dump` | `OUTPUT` | Path of the `.html` file to write |
 | `dump` | `--browser NAME` | `chrome`, `firefox`, `opera` or `safari` |
 | `dump` | `--profile NAME` | Only favorites this profile holds; repeat to merge |
@@ -357,6 +358,30 @@ ingested once after the import.
 
 **Upgrading:** a database from an older version is upgraded in place the next time it is
 opened, and a copy is saved as `<database>.bak`.
+
+## Folder changes
+
+A favorite that is already in the database is not added again, so by default moving it
+to another folder in a browser is not noticed.
+Pass `--folder-updates` to check.
+
+```
+befave ingest --profile work-chrome --folder-updates bookmarks.html
+```
+
+For a profile that was ingested before, `befave` compares each favorite’s folder in the
+file with the folder that profile held at its last ingest.
+The ones that differ are listed with their old and new folder, and you choose move all,
+leave all, or decide one by one.
+A move changes the folder the database stores, so later dumps use it.
+Favorites you leave are not asked about again unless the folder changes again.
+
+`--yes` moves every changed favorite.
+Without a terminal and without `--yes`, changes are left alone and offered again at the
+next `--folder-updates` ingest.
+The first ingest of a profile has nothing to compare.
+Folders are compared per profile, so two profiles that file the same favorite
+differently do not prompt each other.
 
 ## What dump does
 

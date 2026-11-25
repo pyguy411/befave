@@ -381,8 +381,38 @@ def _candidates(conn, sid, items, previous):
     )
 
 
+def folder_changes(rows, previous, candidates):
+    """Favorites this profile held in another folder than the file puts them in."""
+    out = []
+    for url_norm in candidates:
+        row = previous.get(url_norm)
+        if not row or row["deleted"]:
+            continue
+        old, new = row["folder"] or "", rows[url_norm]["folder"] or ""
+        if old != new and (row["bookmark_folder"] or "") != new:
+            out.append(
+                {
+                    "url_norm": url_norm,
+                    "url": row["url"],
+                    "title": rows[url_norm]["title"] or row["title"] or "",
+                    "old_folder": row["bookmark_folder"] or old,
+                    "profile_folder": row["folder"],
+                    "new_folder": new,
+                }
+            )
+    return sorted(out, key=lambda c: (c["new_folder"].lower(), c["title"].lower()))
+
+
 def import_files(
-    conn, paths, profile, track=False, assume_yes=False, confirm=None, decide=None
+    conn,
+    paths,
+    profile,
+    track=False,
+    assume_yes=False,
+    confirm=None,
+    decide=None,
+    folders=False,
+    decide_folders=None,
 ):
     """Ingest browser export file(s) as one run for `profile`.
 
@@ -391,7 +421,12 @@ def import_files(
     deletion: `decide(candidates)` returns (delete, keep) as lists of url_norm; with
     `assume_yes` they are all deleted; otherwise they are left alone.
 
-    Returns a dict of counts: found, added, missing, deleted, kept, first.
+    When `folders` is true, favorites the profile held in a different folder than the
+    file now has are offered for moving: `decide_folders(changes)` returns the url_norm
+    list to move; with `assume_yes` they are all moved; otherwise they are left alone.
+
+    Returns a dict of counts: found, added, missing, deleted, kept, first,
+    folder_changes, moved.
     """
     confirm = confirm or (lambda msg: False)
     ok = lambda msg: assume_yes or confirm(msg)
@@ -414,7 +449,8 @@ def import_files(
         r["url_norm"]: r
         for r in conn.execute(
             "SELECT pb.url_norm, pb.ingest_id, pb.title, pb.folder, pb.add_date, "
-            "b.url, b.title AS bookmark_title, b.deleted, i.taken_at "
+            "b.url, b.title AS bookmark_title, b.folder AS bookmark_folder, "
+            "b.deleted, i.taken_at "
             "FROM profile_bookmarks pb JOIN bookmarks b ON b.url_norm = pb.url_norm "
             "JOIN ingests i ON i.id = pb.ingest_id WHERE pb.profile_id = ?",
             (sid,),
@@ -477,6 +513,25 @@ def import_files(
             "UPDATE bookmarks SET deleted = 0, deleted_at = NULL WHERE url_norm = ?",
             (url,),
         )
+    changes = moved = 0
+    undecided = {}
+    if folders and previous:
+        found = folder_changes(rows, previous, items - blocked)
+        changes = len(found)
+        if found and assume_yes:
+            to_move = [c["url_norm"] for c in found]
+        elif found and decide_folders:
+            to_move = decide_folders(found)
+        else:
+            to_move = []
+            undecided = {c["url_norm"]: c["profile_folder"] for c in found}
+        for url in to_move:
+            conn.execute(
+                "UPDATE bookmarks SET folder = ? WHERE url_norm = ?",
+                (rows[url]["folder"], url),
+            )
+        moved = len(to_move)
+
     added = 0
     for url in items - blocked:
         b = rows[url]
@@ -504,7 +559,7 @@ def import_files(
         added += cur.rowcount
         conn.execute(
             "INSERT OR REPLACE INTO profile_bookmarks VALUES (?,?,?,?,?,?)",
-            (sid, url, run, b["title"], b["folder"], b["add_date"]),
+            (sid, url, run, b["title"], undecided.get(url, b["folder"]), b["add_date"]),
         )
     # Stale copies of deleted favorites stop being held once a file no longer has them.
     for url in deleted_in_db - items:
@@ -520,11 +575,21 @@ def import_files(
         "deleted": deleted,
         "kept": kept,
         "first": not previous,
+        "folder_changes": changes,
+        "moved": moved,
     }
 
 
 def run_ingest(
-    files, db, profile=None, track=False, assume_yes=False, confirm=None, decide=None
+    files,
+    db,
+    profile=None,
+    track=False,
+    assume_yes=False,
+    confirm=None,
+    decide=None,
+    folders=False,
+    decide_folders=None,
 ):
     """Ingest each file into db; returns an exit status.
 
@@ -541,7 +606,17 @@ def run_ingest(
     for name, paths in groups.items():
         try:
             tracking = track(name) if callable(track) else track
-            r = import_files(conn, paths, name, tracking, assume_yes, confirm, decide)
+            r = import_files(
+                conn,
+                paths,
+                name,
+                tracking,
+                assume_yes,
+                confirm,
+                decide,
+                folders,
+                decide_folders,
+            )
         except (OSError, ValueError, zipfile.BadZipFile) as e:
             conn.rollback()
             print(f"error: {e}", file=sys.stderr)
@@ -559,6 +634,12 @@ def run_ingest(
             )
             if r["missing"] and not (r["deleted"] or r["kept"]):
                 line += " (left alone; pass --yes to delete them)"
+        if folders and r["first"]:
+            line += "; no earlier ingest, no folders to compare"
+        elif folders:
+            line += f"; {r['folder_changes']} in another folder, {r['moved']} moved"
+            if r["folder_changes"] and not r["moved"]:
+                line += " (left alone; pass --yes to move them)"
         print(line)
     conn.close()
     return status
