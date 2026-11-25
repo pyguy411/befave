@@ -41,7 +41,7 @@ class DeletionTests(unittest.TestCase):
 
     def dump(self):
         out = os.path.join(self.tmp.name, "out.html")
-        self.assertEqual(run_dump(out, "chrome", self.db), 0)
+        self.assertEqual(run_dump(out, "chrome", self.db, include_invalid=True), 0)
         with open(out) as f:
             return f.read()
 
@@ -170,11 +170,11 @@ class DeletionTests(unittest.TestCase):
         self.imp("b", [url(2), url(3)])
         self.imp("c", [url(4)])
         out = os.path.join(self.tmp.name, "p.html")
-        self.assertEqual(run_dump(out, "chrome", self.db, ["a"]), 0)
+        self.assertEqual(run_dump(out, "chrome", self.db, ["a"], include_invalid=True), 0)
         text = open(out).read()
         self.assertIn(url(1), text)
         self.assertNotIn(url(3), text)
-        self.assertEqual(run_dump(out, "chrome", self.db, ["a", "b"]), 0)
+        self.assertEqual(run_dump(out, "chrome", self.db, ["a", "b"], include_invalid=True), 0)
         text = open(out).read()
         self.assertEqual(sum(url(n) in text for n in (1, 2, 3, 4)), 3)
         self.assertEqual(text.count(f'HREF="{url(2)}"'), 1)

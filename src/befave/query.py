@@ -7,7 +7,7 @@ import time
 
 from .ingester import open_db
 
-VIEWS = ("show_deleted", "profiles", "history", "safe", "search", "stats")
+VIEWS = ("show_deleted", "profiles", "history", "safe", "search", "stats", "url_status")
 
 
 def _date(ts):
@@ -28,6 +28,18 @@ def _profile_filter(column, profile, args):
 
 def run_view(conn, view, text=None, profile=None, folder=None):
     """Return (headers, rows, url_column) for a view; url_column is None if no URLs."""
+    if view == "url_status":
+        rows = conn.execute(
+            "SELECT title, url, http_status, deleted FROM bookmarks ORDER BY id"
+        ).fetchall()
+        return (
+            ["Title", "URL", "HTTP status", "Deleted"],
+            [
+                (t or "", u, s if s is not None else "unchecked", "yes" if d else "no")
+                for t, u, s, d in rows
+            ],
+            1,
+        )
     if view == "show_deleted":
         rows = conn.execute(
             "SELECT title, url, folder, deleted_at FROM bookmarks WHERE deleted = 1 "
@@ -153,7 +165,8 @@ def run_query(db, view, text=None, profile=None, folder=None, urls=False):
     if urls:
         if url_col is None:
             print(
-                "error: --urls only works with --show-deleted, --safe and --search",
+                "error: --urls only works with --show-deleted, --safe, --search "
+                "and --url-status",
                 file=sys.stderr,
             )
             return 1

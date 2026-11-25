@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     tags TEXT,
     icon_id INTEGER REFERENCES icons(id),
     deleted INTEGER NOT NULL DEFAULT 0,
-    deleted_at INTEGER
+    deleted_at INTEGER,
+    http_status INTEGER
 );
 CREATE TABLE IF NOT EXISTS profiles (
     id INTEGER PRIMARY KEY,
@@ -251,6 +252,9 @@ def open_db(db):
     if "snapshots" in tables:
         migrate(conn, db)
     conn.executescript(SCHEMA)
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(bookmarks)")}
+    if "http_status" not in columns:
+        conn.execute("ALTER TABLE bookmarks ADD COLUMN http_status INTEGER")
     return conn
 
 

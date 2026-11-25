@@ -9,8 +9,9 @@ import time
 
 from .compare import run_compare
 from .dumper import BROWSER_TOOLBAR, run_dump
-from .query import VIEWS, run_query
+from .housekeeping import run_url_validation
 from .ingester import DEFAULT_DB, has_history, list_profiles, run_ingest
+from .query import VIEWS, run_query
 
 INTERACTIVE = sys.stdin.isatty()
 
@@ -284,12 +285,14 @@ def do_dump(args):
             existing
             and choose(
                 "Which favorites should the file contain?",
-                ["All favorites in the database", "Only the favorites of one profile"],
+                ["All eligible favorites in the database", "Only favorites of one profile"],
             )
             == 1
         ):
             profiles = [existing[choose("Which profile?", existing)]]
-    return run_dump(os.path.expanduser(output), browser, db, profiles)
+    return run_dump(
+        os.path.expanduser(output), browser, db, profiles, args.include_invalid
+    )
 
 
 def do_compare(args):
@@ -314,6 +317,7 @@ VIEW_LABELS = {
     "safe": "Favorites you chose to keep",
     "search": "Search favorites",
     "stats": "Totals",
+    "url_status": "URL validation status",
 }
 
 
@@ -323,7 +327,7 @@ def do_query(args):
     if len(chosen) > 1:
         raise SystemExit(
             "befave: error: choose only one of --show-deleted, --profiles, "
-            "--history, --safe, --search, --stats"
+            "--history, --safe, --search, --stats, --url-status"
         )
     if chosen:
         view = chosen[0]
@@ -339,6 +343,15 @@ def do_query(args):
     return run_query(db, view, text, args.profile, args.folder, args.urls)
 
 
+def do_housekeeping(args):
+    db = os.path.expanduser(pick_db(args.db))
+    if not args.validate_urls:
+        if not INTERACTIVE:
+            raise SystemExit("befave: error: pass --validate-urls")
+        choose("What housekeeping would you like to do?", ["Validate URLs"])
+    return run_url_validation(db)
+
+
 def build_parser():
     ap = argparse.ArgumentParser(
         prog="befave",
@@ -346,7 +359,9 @@ def build_parser():
         "database out as a file a browser can import. Any missing details "
         "are asked interactively.",
     )
-    sub = ap.add_subparsers(dest="action", metavar="{ingest,dump,compare,query}")
+    sub = ap.add_subparsers(
+        dest="action", metavar="{ingest,dump,compare,query,housekeeping}"
+    )
 
     ingest = sub.add_parser(
         "ingest", help="ingest browser export file(s) into the database"
@@ -397,6 +412,11 @@ def build_parser():
         default=[],
         help="only dump the favorites this profile holds; repeat to merge "
         "several profiles",
+    )
+    dump.add_argument(
+        "--include-invalid",
+        action="store_true",
+        help="include non-deleted favorites regardless of HTTP status",
     )
     dump.set_defaults(func=do_dump)
 
@@ -452,10 +472,22 @@ def build_parser():
         "--search", metavar="TEXT", help="find favorites by title or URL"
     )
     views.add_argument("--stats", action="store_true", help="show totals (the default)")
+    views.add_argument(
+        "--url-status", action="store_true", help="show saved HTTP response codes"
+    )
     q.add_argument("--profile", help="only this profile (--history, --safe, --search)")
     q.add_argument("--folder", help="only folders containing this text (--search)")
     q.add_argument("--urls", action="store_true", help="print bare URLs, for scripts")
     q.set_defaults(func=do_query)
+
+    housekeeping = sub.add_parser("housekeeping", help="perform database housekeeping")
+    housekeeping.add_argument("--db", help=f"database file (default: {DEFAULT_DB})")
+    housekeeping.add_argument(
+        "--validate-urls",
+        action="store_true",
+        help="check URLs without a saved HTTP response code",
+    )
+    housekeeping.set_defaults(func=do_housekeeping)
     return ap
 
 
@@ -464,8 +496,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not args.action:
         if not INTERACTIVE:
-            ap.error("an action (ingest, dump, compare or query) is required")
-        action = ["ingest", "dump", "compare", "query"][
+            ap.error(
+                "an action (ingest, dump, compare, query or housekeeping) is required"
+            )
+        action = ["ingest", "dump", "compare", "query", "housekeeping"][
             choose(
                 "What would you like to do?",
                 [
@@ -473,6 +507,7 @@ def main(argv=None):
                     "dump - dump the database out as a file for a browser to import",
                     "compare - see which favorites a profile shares with another profile or the database",
                     "query - show deleted favorites, profiles, ingest history and more",
+                    "housekeeping - validate saved URLs",
                 ],
             )
         ]

@@ -11,7 +11,7 @@ In between, `befave` keeps one sqlite3 database with no duplicates, and remember
 you deleted. Think of it as a bucket for your favorites, with two commands:
 
 - **`ingest`** feeds a browser’s exported HTML file into the bucket.
-- **`dump`** pours the bucket out as an HTML file for a browser to import.
+- **`dump`** exports eligible favorites as an HTML file for a browser to import.
 
 (Browsers call their steps “export” and “import”; `befave` uses its own words so the two
 aren’t confused.) Ingest from as many browsers as you like, dump to any of them, and
@@ -29,7 +29,7 @@ database --(befave dump)--> out.html --(you import)--> browser
   merged set, and import that file into either browser.
 - Added new favorites in a new browser after you ingested your favorites from another
   one? Export the new browser’s bookmarks, ingest them (only the new ones are added),
-  then dump the full set and import it into any browser.
+  then dump the merged set and import it into any browser.
 - Switching browsers, or using several at once?
   Keep one master list and load it into whichever browser you pick up.
 
@@ -69,39 +69,44 @@ Most questions are numbered choices: type the number and press Enter.
 Anything you pass as an argument is not asked again.
 
 ```
-befave                      # asks: ingest, dump or compare?
+befave                      # asks: ingest, dump, compare, query or housekeeping?
 befave ingest               # asks for the file(s), profile and database
 befave ingest --db a.sqlite3 --profile home-firefox example_formats/0_firefox_bookmarks.html
 befave dump                 # asks for the target browser, output file, database
 befave dump out.html --browser firefox --db a.sqlite3
+befave housekeeping --validate-urls --db a.sqlite3
 ```
 
 ### Options
 
-| Command | Argument or option | Meaning |
-| --- | --- | --- |
-| `ingest` | `FILE...` | Export file(s) or globs, `.html` or `.zip` |
-| `ingest` | `--profile NAME` | Profile a file comes from; once per file, in order |
-| `ingest` | `--db PATH` | Database file (default `~/.befave/favorites.db`) |
-| `ingest` | `--track-deletions` | Review favorites missing since the profile’s last ingest |
-| `ingest` | `--folder-updates` | Review favorites the profile now has in a different folder |
-| `ingest` | `--yes` | Delete all missing favorites, accept restores, move all changed folders |
-| `dump` | `OUTPUT` | Path of the `.html` file to write |
-| `dump` | `--browser NAME` | `chrome`, `firefox`, `opera` or `safari` |
-| `dump` | `--profile NAME` | Only favorites this profile holds; repeat to merge |
-| `dump` | `--db PATH` | Database file (default `~/.befave/favorites.db`) |
-| `compare` | `PROFILE [PROFILE]` | Two profiles, or one profile and the whole database |
-| `compare` | `--common`, `--only-a`, `--only-b` | Print just that set of URLs |
-| `query` | `--show-deleted` | List deleted favorites |
-| `query` | `--profiles` | Profiles, favorites held, last ingest |
-| `query` | `--history` | Ingest runs and their files |
-| `query` | `--safe` | Favorites you chose to keep when asked about deleting |
-| `query` | `--search TEXT` | Find favorites by title or URL |
-| `query` | `--stats` | Totals (the default) |
-| `query` | `--profile`, `--folder` | Filters (see [Querying](#querying-the-database)) |
-| `query` | `--urls` | Bare URLs, for scripts |
-| `query` | `--db PATH` | Database file (default `~/.befave/favorites.db`) |
-| `compare` | `--db PATH` | Database file (default `~/.befave/favorites.db`) |
+| Command        | Argument or option                 | Meaning                                                                 |
+|----------------|------------------------------------|-------------------------------------------------------------------------|
+| `ingest`       | `FILE...`                          | Export file(s) or globs, `.html` or `.zip`                              |
+| `ingest`       | `--profile NAME`                   | Profile a file comes from; once per file, in order                      |
+| `ingest`       | `--db PATH`                        | Database file (default `~/.befave/favorites.db`)                        |
+| `ingest`       | `--track-deletions`                | Review favorites missing since the profile’s last ingest                |
+| `ingest`       | `--folder-updates`                 | Review favorites the profile now has in a different folder              |
+| `ingest`       | `--yes`                            | Delete all missing favorites, accept restores, move all changed folders |
+| `dump`         | `OUTPUT`                           | Path of the `.html` file to write                                       |
+| `dump`         | `--browser NAME`                   | `chrome`, `firefox`, `opera` or `safari`                                |
+| `dump`         | `--profile NAME`                   | Only favorites this profile holds; repeat to merge                      |
+| `dump`         | `--include-invalid`                | Include non-deleted favorites regardless of HTTP status                 |
+| `dump`         | `--db PATH`                        | Database file (default `~/.befave/favorites.db`)                        |
+| `compare`      | `PROFILE [PROFILE]`                | Two profiles, or one profile and the whole database                     |
+| `compare`      | `--common`, `--only-a`, `--only-b` | Print just that set of URLs                                             |
+| `query`        | `--show-deleted`                   | List deleted favorites                                                  |
+| `query`        | `--profiles`                       | Profiles, favorites held, last ingest                                   |
+| `query`        | `--history`                        | Ingest runs and their files                                             |
+| `query`        | `--safe`                           | Favorites you chose to keep when asked about deleting                   |
+| `query`        | `--search TEXT`                    | Find favorites by title or URL                                          |
+| `query`        | `--stats`                          | Totals (the default)                                                    |
+| `query`        | `--url-status`                     | Saved HTTP response codes and unchecked URLs                            |
+| `query`        | `--profile`, `--folder`            | Filters (see [Querying](#querying-the-database))                        |
+| `query`        | `--urls`                           | Bare URLs, for scripts                                                  |
+| `query`        | `--db PATH`                        | Database file (default `~/.befave/favorites.db`)                        |
+| `compare`      | `--db PATH`                        | Database file (default `~/.befave/favorites.db`)                        |
+| `housekeeping` | `--validate-urls`                  | Check URLs that have no saved HTTP response                             |
+| `housekeeping` | `--db PATH`                        | Database file (default `~/.befave/favorites.db`)                        |
 
 ### Ingesting several files at once
 
@@ -168,12 +173,14 @@ befave dump --browser chrome out.html
    not change which favorites are included.
 3. Enter the path for the output `.html` file.
 4. Choose the database, as in ingest.
-5. In the browser, import the file with its bookmark manager’s import option.
+5. Only favorites with a saved HTTP status of 200 are exported by default. Run URL
+   validation first, or pass `--include-invalid` to include unchecked and other URLs.
+6. In the browser, import the file with its bookmark manager’s import option.
 
 ### Getting an export file from your browser
 
-`befave` only reads and writes HTML files; it does not open, read or change your
-browser’s own bookmarks.
+`befave` reads and writes bookmark exports as HTML files; it does not open, read or
+change your browser’s own bookmarks.
 Before an ingest, export your bookmarks from the browser’s bookmark manager as an HTML
 file. After a dump, import the file `befave` wrote using the same bookmark manager.
 Importing adds to the browser’s existing bookmarks, so `befave` does not remove anything
@@ -188,15 +195,15 @@ The default is `~/.befave/favorites.db`; use `--db` to choose another file.
 All profiles contribute favorites to the same `bookmarks` table. Its normalized URL is
 unique, so a favorite found in several profiles is stored once; the details from the
 first ingest that added it are kept. The `profile_bookmarks` table separately records
-which favorites each profile held at its latest ingest. A dump of the whole database
-exports each non-deleted favorite once, while a profile-filtered dump exports the
-deduplicated union of favorites held by the selected profiles.
+which favorites each profile held at its latest ingest. A dump exports each eligible
+non-deleted favorite once, while a profile-filtered dump exports the deduplicated union
+of eligible favorites held by the selected profiles.
 
 The tables are:
 
 - **`bookmarks`** — the shared, deduplicated favorites: URL, title, folder path, dates,
-  tags (Firefox), icon reference, and deletion status. Deleted favorites stay here with
-  `deleted = 1` and are omitted from dumps.
+  tags (Firefox), icon reference, deletion status, and nullable `http_status` response
+  code. Deleted favorites stay here with `deleted = 1` and are omitted from dumps.
 - **`icons`** — base64 bookmark icons, stored once and referenced from `bookmarks`.
 - **`profiles`** — the named browser profiles used to keep each browser's set and
   deletion history separate.
@@ -308,7 +315,8 @@ favorites. It uses what each profile held at its ingests, meaning the favorites 
 export files you gave `befave`. A dump does not count: `befave` cannot know whether you
 imported the file, so if you want to see what a browser really holds, export a new file
 from it and ingest it.
-Comparing one profile with the database shows what a dump would add to that browser.
+Comparing one profile with the database shows favorites the profile does not hold;
+dump also applies its HTTP status filter.
 
 ## Querying the database
 
@@ -318,13 +326,37 @@ befave query --profiles                   # favorites held per profile
 befave query --history --profile work-chrome
 befave query --search django --folder dev
 befave query --show-deleted --urls        # bare URLs for scripts
+befave query --url-status                 # saved HTTP codes and unchecked URLs
 ```
 
 `query` only reads the database.
 Pick one view per run; with none, a terminal asks which you want and a script gets
 `--stats`. `--profile` filters `--history`, `--safe` and `--search`. It cannot be used
 with `--show-deleted`, because the database does not record which profile a deletion
-came from. `--urls` works with `--show-deleted`, `--safe` and `--search`.
+came from. `--urls` works with `--show-deleted`, `--safe`, `--search` and `--url-status`.
+
+## Housekeeping: URL validation
+
+Choose housekeeping from the interactive menu, or run:
+
+```
+befave housekeeping --validate-urls --db a.sqlite3
+befave query --url-status --db a.sqlite3
+```
+
+Validation makes an HTTP GET request for every HTTP or HTTPS bookmark without a saved
+response code, including deleted bookmarks, and follows redirects. This contacts the
+saved sites (and any redirect targets) with the URLs in the database; it does not use
+browser login sessions. Responses are saved immediately in `bookmarks.http_status` and
+are not checked again on later runs. A `200` means the request succeeded, `404` means
+the resource was not found, and `401` or `403` may indicate that credentials or access
+are required. Other response codes are saved as-is, not classified as valid or invalid.
+No favorites are deleted or changed based on their response.
+
+Connection errors and timeouts are reported and remain unchecked for a later retry; the
+command exits with an error if any occur. FTP and other non-HTTP URLs are reported as
+skipped and remain unchecked. Existing databases gain the nullable `http_status` column
+when opened.
 
 ## Deletions
 
@@ -335,8 +367,8 @@ It works by asking you.
 1. Every ingest records a run (a UUID, the profile, the file names and the time) and
    marks each favorite the file contains with that run.
 2. When you ingest a profile that has been ingested before, `befave` asks: “Has this
-   profile been ingested before and do you want to check for deleted favorites?”
-   (or pass `--track-deletions`). Answer No to just add favorites.
+   profile been ingested before and do you want to check for deleted favorites?” (or pass `--track-deletions`). Answer
+   No to just add favorites.
 3. At the end of a tracked run, favorites that profile held but that are not in the file
    are listed with their title, URL, folder, date added and the file and date they were
    last seen in. You choose delete all, keep all, or decide one by one.
@@ -356,8 +388,8 @@ did not hold. You are asked whether to restore it (`--yes` restores).
 in a browser right after importing a dump is only noticed once that browser has been
 ingested once after the import.
 
-**Upgrading:** a database from an older version is upgraded in place the next time it is
-opened, and a copy is saved as `<database>.bak`.
+**Upgrading:** a database using the older snapshots-based deletion tracking is upgraded
+in place the next time it is opened, and a copy is saved as `<database>.bak`.
 
 ## Folder changes
 
@@ -385,9 +417,13 @@ differently do not prompt each other.
 
 ## What dump does
 
-By default the file has every favorite in the database.
-With `--profile NAME` it has only the favorites that profile held at its last ingest,
-minus any you deleted.
+By default the file contains only non-deleted favorites with a saved HTTP status of
+`200`. Unchecked URLs and all other statuses (including `401`, `403`, and `404`) are
+excluded. Newly ingested URLs are unchecked, so run
+`befave housekeeping --validate-urls` first or pass `--include-invalid` to include
+all non-deleted favorites regardless of status, including unchecked and FTP URLs.
+With `--profile NAME` the file contains only eligible favorites that profile held at
+its last ingest.
 Repeat the option to merge several profiles into one file, for example a work and a
 personal profile:
 
@@ -401,16 +437,16 @@ The database stores each normalized URL once, even if several profiles hold it.
 So a dump without `--profile` includes that URL once, not once per profile.
 Its saved title, folder and other bookmark details come from the first ingest that added
 it to the database; later ingests from other profiles do not replace them.
-With `--profile`, the URL appears in each dump for a profile that holds it.
+With `--profile`, an eligible URL appears in each dump for a profile that holds it.
 
 Writes a Netscape-format HTML file with the folder hierarchy rebuilt.
 The toolbar folder is named for the target browser (`--browser`):
 
-| Browser | Toolbar folder |
-| --- | --- |
-| chrome, opera | Bookmarks Bar |
-| firefox | Bookmarks Toolbar |
-| safari | Favorites |
+| Browser       | Toolbar folder    |
+|---------------|-------------------|
+| chrome, opera | Bookmarks Bar     |
+| firefox       | Bookmarks Toolbar |
+| safari        | Favorites         |
 
 The file has no wrapper folder.
 Other root folders sit beside the toolbar.

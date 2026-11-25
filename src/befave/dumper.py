@@ -53,24 +53,26 @@ def render(node, out, depth, toolbar_name=None):
     out.append(f"{pad}</DL><p>")
 
 
-def dump(db, path, browser, profiles=None):
-    """Write the favorites to path; `profiles` limits it to what those profiles hold."""
+def dump(db, path, browser, profiles=None, include_invalid=False):
+    """Write eligible favorites to path, optionally limiting them to profiles."""
     conn = open_db(db)
     conn.row_factory = sqlite3.Row
+    sql = (
+        "SELECT b.*, i.icon FROM bookmarks b LEFT JOIN icons i ON i.id = b.icon_id "
+        "WHERE b.deleted = 0"
+    )
+    params = []
+    if not include_invalid:
+        sql += " AND b.http_status = 200"
     if profiles:
         marks = ",".join("?" * len(profiles))
-        rows = conn.execute(
-            "SELECT b.*, i.icon FROM bookmarks b LEFT JOIN icons i ON i.id = b.icon_id "
-            "WHERE b.deleted = 0 AND b.url_norm IN ("
+        sql += (
+            " AND b.url_norm IN ("
             "SELECT pb.url_norm FROM profile_bookmarks pb JOIN profiles p "
-            f"ON p.id = pb.profile_id WHERE p.name IN ({marks})) ORDER BY b.id",
-            list(profiles),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT b.*, i.icon FROM bookmarks b LEFT JOIN icons i ON i.id = b.icon_id "
-            "WHERE b.deleted = 0 ORDER BY b.id"
-        ).fetchall()
+            f"ON p.id = pb.profile_id WHERE p.name IN ({marks}))"
+        )
+        params.extend(profiles)
+    rows = conn.execute(sql + " ORDER BY b.id", params).fetchall()
     out = [
         "<!DOCTYPE NETSCAPE-Bookmark-file-1>",
         '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
@@ -87,7 +89,7 @@ def dump(db, path, browser, profiles=None):
     return len(rows)
 
 
-def run_dump(output, browser, db, profiles=None):
+def run_dump(output, browser, db, profiles=None, include_invalid=False):
     """Dump db to output for the target browser; returns a process exit status."""
     if not os.path.exists(db):
         print(f"error: database not found: {db}", file=sys.stderr)
@@ -101,5 +103,6 @@ def run_dump(output, browser, db, profiles=None):
             file=sys.stderr,
         )
         return 1
-    print(f"{output}: {dump(db, output, browser, profiles)} bookmarks dumped")
+    count = dump(db, output, browser, profiles, include_invalid)
+    print(f"{output}: {count} bookmarks dumped")
     return 0
